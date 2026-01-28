@@ -20,9 +20,16 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      # Wrapper/Gradleのキャッシュと、Wrapper優先運用に寄せる
-      - name: Setup Gradle (cache)
-        uses: gradle/actions/setup-gradle@v4
+      # ★重要：system gradle(9.3) を避けるため、Gradle 8.6 を明示インストール
+      - name: Install Gradle 8.6 (no system Gradle)
+        shell: bash
+        run: |
+          set -euxo pipefail
+          GRADLE_VERSION="8.6"
+          curl -fsSL "https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip" -o gradle.zip
+          unzip -q gradle.zip
+          echo "$PWD/gradle-${GRADLE_VERSION}/bin" >> "$GITHUB_PATH"
+          gradle --version
 
       - name: Generate Project Files
         shell: bash
@@ -53,7 +60,7 @@ jobs:
           EOF
 
           # --- 2. ルート build.gradle.kts ---
-          # AGP 8.4.x は Gradle 8.6 が前提（互換性を揃える） :contentReference[oaicite:1]{index=1}
+          # Gradle 8.6 と相性の良い組み合わせへ（AGP 8.4.x / Kotlin 1.9.24）
           cat > build.gradle.kts <<EOF
           plugins {
               id("com.android.application") version "8.4.2" apply false
@@ -61,7 +68,7 @@ jobs:
           }
           EOF
 
-          # --- 3. gradle.properties（CIでの安定性UP） ---
+          # --- 3. gradle.properties ---
           cat > gradle.properties <<EOF
           org.gradle.jvmargs=-Xmx3g -Dfile.encoding=UTF-8
           android.useAndroidX=true
@@ -69,7 +76,7 @@ jobs:
           kotlin.code.style=official
           EOF
 
-          # --- 4. appモジュール作成 ---
+          # --- 4. アプリモジュール作成 ---
           mkdir -p app/src/main/{java/com/example/drivesense,res/xml,res/values,res/drawable,res/mipmap-anydpi-v26}
 
           cat > app/build.gradle.kts <<EOF
@@ -123,13 +130,17 @@ jobs:
           EOF
 
           cat > app/src/main/res/drawable/ic_launcher_background.xml <<EOF
-          <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+          <vector xmlns:android="http://schemas.android.com/apk/res/android"
+              android:width="108dp" android:height="108dp"
+              android:viewportWidth="108" android:viewportHeight="108">
               <path android:fillColor="#008577" android:pathData="M0,0h108v108h-108z"/>
           </vector>
           EOF
 
           cat > app/src/main/res/drawable/ic_launcher_foreground.xml <<EOF
-          <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+          <vector xmlns:android="http://schemas.android.com/apk/res/android"
+              android:width="108dp" android:height="108dp"
+              android:viewportWidth="108" android:viewportHeight="108">
               <path android:fillColor="#FFFFFF" android:pathData="M54,26 A28,28 0 1,0 54,82 A28,28 0 1,0 54,26"/>
           </vector>
           EOF
@@ -142,7 +153,7 @@ jobs:
           EOF
           cp app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml
 
-          # --- Manifest（package を明示：相対クラス名の解決を確実に） ---
+          # --- Manifest ---
           cat > app/src/main/AndroidManifest.xml <<EOF
           <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android"
@@ -237,18 +248,25 @@ jobs:
                   super.onDestroy()
               }
 
-              override fun onGetRoot(clientPackageName: String, clientUid: Int, rootHints: Bundle?): BrowserRoot {
+              override fun onGetRoot(
+                  clientPackageName: String,
+                  clientUid: Int,
+                  rootHints: Bundle?
+              ): BrowserRoot {
                   return BrowserRoot("ROOT", null)
               }
 
-              override fun onLoadChildren(parentId: String, result: Result<MutableList<MediaBrowserCompat.MediaItem>>) {
+              override fun onLoadChildren(
+                  parentId: String,
+                  result: Result<MutableList<MediaBrowserCompat.MediaItem>>
+              ) {
                   result.sendResult(mutableListOf())
               }
           }
           EOF
 
-      # ★重要：Wrapperを 8.6 に固定（AGP 8.4.x の前提） :contentReference[oaicite:2]{index=2}
-      - name: Setup Gradle Wrapper (Force 8.6)
+      # ★重要：ここも gradle(8.6) で wrapper 作成（system gradle 9.3 は使わない）
+      - name: Generate Gradle Wrapper (8.6)
         shell: bash
         run: |
           set -euxo pipefail
@@ -256,7 +274,7 @@ jobs:
           chmod +x gradlew
           ./gradlew --version
 
-      # ★重要：必ず ./gradlew を使う（system gradle 9.3 を踏まない）
+      # ★重要：ビルドは必ず ./gradlew（ここで gradle と書くとアウト）
       - name: Build APK
         shell: bash
         run: |
