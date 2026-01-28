@@ -1,4 +1,4 @@
-name: Build Ambient Flow (Fix Visibility)
+Name: Build Ambient Flow (Simple & Stable)
 
 on:
   workflow_dispatch:
@@ -20,20 +20,19 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install Gradle 8.6
+      - name: Install Gradle 8.9
         shell: bash
         run: |
           set -euxo pipefail
-          wget -q https://services.gradle.org/distributions/gradle-8.6-bin.zip
-          unzip -q gradle-8.6-bin.zip
-          echo "$PWD/gradle-8.6/bin" >> $GITHUB_PATH
+          wget -q https://services.gradle.org/distributions/gradle-8.9-bin.zip
+          unzip -q gradle-8.9-bin.zip
+          echo "$PWD/gradle-8.9/bin" >> $GITHUB_PATH
 
       - name: Generate Project Files
         shell: bash
         run: |
           set -euxo pipefail
 
-          # ★変更点1：パッケージ名を「com.example」以外にする（重要）
           PKG="jp.kazukun.ambient"
           APP_LABEL="Ambient Flow"
 
@@ -60,8 +59,8 @@ jobs:
           # 2. Build Gradle (Project)
           cat > build.gradle.kts <<EOF
           plugins {
-              id("com.android.application") version "8.3.0" apply false
-              id("org.jetbrains.kotlin.android") version "1.9.23" apply false
+              id("com.android.application") version "8.5.2" apply false
+              id("org.jetbrains.kotlin.android") version "2.0.20" apply false
           }
           EOF
 
@@ -85,14 +84,14 @@ jobs:
 
           android {
               namespace = "$PKG"
-              compileSdk = 34
+              compileSdk = 35
 
               defaultConfig {
                   applicationId = "$PKG"
                   minSdk = 26
-                  targetSdk = 34
-                  versionCode = 2
-                  versionName = "2.0.Fix"
+                  targetSdk = 35
+                  versionCode = 5
+                  versionName = "3.1.Simple"
               }
               buildTypes {
                   release { isMinifyEnabled = false }
@@ -105,11 +104,11 @@ jobs:
           }
 
           dependencies {
-              implementation("androidx.core:core-ktx:1.12.0")
-              implementation("androidx.appcompat:appcompat:1.6.1")
+              implementation("androidx.core:core-ktx:1.13.1")
+              implementation("androidx.appcompat:appcompat:1.7.0")
               implementation("androidx.media:media:1.7.0")
-              implementation("com.google.android.gms:play-services-location:21.0.1")
-              implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+              implementation("com.google.android.gms:play-services-location:21.3.0")
+              implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
           }
           EOF
 
@@ -117,6 +116,8 @@ jobs:
           cat > app/src/main/res/values/strings.xml <<EOF
           <resources>
               <string name="app_name">$APP_LABEL</string>
+              <string name="notification_channel_name">Ambient Flow Status</string>
+              <string name="notification_channel_desc">Displaying current flow state</string>
           </resources>
           EOF
 
@@ -132,14 +133,14 @@ jobs:
           <vector xmlns:android="http://schemas.android.com/apk/res/android"
               android:width="108dp" android:height="108dp"
               android:viewportWidth="108" android:viewportHeight="108">
-              <path android:fillColor="#000000" android:pathData="M0,0h108v108h-108z"/>
+              <path android:fillColor="#263238" android:pathData="M0,0h108v108h-108z"/>
           </vector>
           EOF
           cat > app/src/main/res/drawable/ic_launcher_foreground.xml <<EOF
           <vector xmlns:android="http://schemas.android.com/apk/res/android"
               android:width="108dp" android:height="108dp"
               android:viewportWidth="108" android:viewportHeight="108">
-              <path android:fillColor="#00E5FF" android:pathData="M54,26 A28,28 0 1,0 54,82 A28,28 0 1,0 54,26 M54,40 A14,14 0 1,1 54,68 A14,14 0 1,1 54,40"/>
+              <path android:fillColor="#80CBC4" android:pathData="M54,26 A28,28 0 1,0 54,82 A28,28 0 1,0 54,26 M54,40 A14,14 0 1,1 54,68 A14,14 0 1,1 54,40"/>
           </vector>
           EOF
           cat > app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml <<EOF
@@ -151,11 +152,9 @@ jobs:
           cp app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml
 
           # Manifest
-          # ★変更点2：Android 14 (API 34) に必要な権限を全て追加
           cat > app/src/main/AndroidManifest.xml <<EOF
           <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="$PKG">
-              
               <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
               <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
               <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
@@ -166,10 +165,7 @@ jobs:
 
               <application
                   android:label="$APP_LABEL"
-                  android:allowBackup="false"
-                  android:supportsRtl="true"
                   android:icon="@mipmap/ic_launcher"
-                  android:roundIcon="@mipmap/ic_launcher_round"
                   android:theme="@style/Theme.AppCompat.NoActionBar">
 
                   <meta-data
@@ -187,8 +183,7 @@ jobs:
 
                   <activity
                       android:name=".MainActivity"
-                      android:exported="true"
-                      android:launchMode="singleTop">
+                      android:exported="true">
                       <intent-filter>
                           <action android:name="android.intent.action.MAIN" />
                           <category android:name="android.intent.category.LAUNCHER" />
@@ -199,6 +194,7 @@ jobs:
           EOF
 
           # --- Kotlin Code ---
+          
           # 1. MainActivity
           cat > app/src/main/java/jp/kazukun/ambient/MainActivity.kt <<EOF
           package $PKG
@@ -209,130 +205,183 @@ jobs:
           import androidx.appcompat.app.AppCompatActivity
           import androidx.core.app.ActivityCompat
           import androidx.core.content.ContextCompat
+          import android.content.Intent
 
           class MainActivity : AppCompatActivity() {
               override fun onCreate(savedInstanceState: Bundle?) {
                   super.onCreate(savedInstanceState)
-                  
                   val perms = mutableListOf(Manifest.permission.ACCESS_FINE_LOCATION)
                   if (Build.VERSION.SDK_INT >= 33) {
                       perms.add(Manifest.permission.POST_NOTIFICATIONS)
                   }
-                  
                   if (perms.any { ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED }) {
                       ActivityCompat.requestPermissions(this, perms.toTypedArray(), 99)
+                  } else {
+                      startService()
                   }
+              }
+              override fun onRequestPermissionsResult(rq: Int, p: Array<out String>, gr: IntArray) {
+                  super.onRequestPermissionsResult(rq, p, gr)
+                  if (rq == 99 && gr.isNotEmpty() && gr[0] == PackageManager.PERMISSION_GRANTED) startService()
+              }
+              private fun startService() {
+                  ContextCompat.startForegroundService(this, Intent(this, AmbientMediaService::class.java))
               }
           }
           EOF
 
-          # 2. Service
+          # 2. AmbientMediaService (Simple Text Version)
           cat > app/src/main/java/jp/kazukun/ambient/AmbientMediaService.kt <<EOF
           package $PKG
 
           import android.Manifest
+          import android.app.*
           import android.content.Context
+          import android.content.Intent
           import android.content.pm.PackageManager
-          import android.graphics.Bitmap
-          import android.graphics.Color
-          import android.location.Location
-          import android.location.LocationListener
-          import android.location.LocationManager
+          import android.graphics.*
+          import android.location.*
+          import android.os.Build
           import android.os.Bundle
           import android.support.v4.media.MediaBrowserCompat
           import android.support.v4.media.MediaMetadataCompat
           import android.support.v4.media.session.MediaSessionCompat
           import android.support.v4.media.session.PlaybackStateCompat
+          import androidx.core.app.NotificationCompat
           import androidx.core.content.ContextCompat
           import androidx.media.MediaBrowserServiceCompat
+          import androidx.media.app.NotificationCompat.MediaStyle
           import kotlinx.coroutines.*
-          import kotlin.math.*
 
           class AmbientMediaService : MediaBrowserServiceCompat(), LocationListener {
               private lateinit var mediaSession: MediaSessionCompat
               private var locationManager: LocationManager? = null
-              private val renderScope = CoroutineScope(Dispatchers.Default + Job())
+              private val scope = CoroutineScope(Dispatchers.Default + Job())
               private var isRunning = false
-              private var currentSpeedFactor = 0.1f
-              private var time = 0.0
               
-              private val WIDTH = 512
-              private val HEIGHT = 512
-              private val pixels = IntArray(WIDTH * HEIGHT)
-              private val bitmap = Bitmap.createBitmap(WIDTH, HEIGHT, Bitmap.Config.ARGB_8888)
+              // 描画用のキャンバス設定
+              private val BITMAP_SIZE = 512
+              private val bitmap = Bitmap.createBitmap(BITMAP_SIZE, BITMAP_SIZE, Bitmap.Config.ARGB_8888)
+              private val canvas = Canvas(bitmap)
+              private val paint = Paint().apply {
+                  isAntiAlias = true
+                  textAlign = Paint.Align.CENTER
+                  color = Color.WHITE
+                  textSize = 80f
+                  typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+              }
+
+              private val CHANNEL_ID = "ambient_status_channel"
+              private val NOTIFICATION_ID = 777
+              
+              private var lastSpeed = -1f
 
               override fun onCreate() {
                   super.onCreate()
-                  
-                  mediaSession = MediaSessionCompat(this, "AmbientFlowSession").apply {
-                      setCallback(object : MediaSessionCompat.Callback() {})
+                  createNotificationChannel()
+
+                  mediaSession = MediaSessionCompat(this, "AmbientSession").apply {
+                      setCallback(object : MediaSessionCompat.Callback() {
+                          override fun onPlay() { updateState("STARTING...", Color.DKGRAY) }
+                      })
                       isActive = true
                       setPlaybackState(PlaybackStateCompat.Builder()
                           .setActions(PlaybackStateCompat.ACTION_PLAY or PlaybackStateCompat.ACTION_PAUSE)
                           .setState(PlaybackStateCompat.STATE_PLAYING, 0L, 1.0f)
                           .build())
-                      updateMetadata(bitmap)
                   }
                   sessionToken = mediaSession.sessionToken
                   
                   setupLocation()
-                  startRendering()
+                  
+                  // 初期状態を表示
+                  updateState("STAY", Color.parseColor("#1A237E")) // 深い青
+                  isRunning = true
+              }
+
+              override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+                  startForeground(NOTIFICATION_ID, buildNotification(bitmap, "Ready"))
+                  return START_STICKY
+              }
+
+              // シンプルな状態更新ロジック
+              private fun updateState(text: String, bgColor: Int) {
+                  scope.launch {
+                      // 1. 背景を塗る
+                      canvas.drawColor(bgColor)
+                      
+                      // 2. 文字を中心に書く
+                      val xPos = (canvas.width / 2).toFloat()
+                      val yPos = (canvas.height / 2 - (paint.descent() + paint.ascent()) / 2)
+                      canvas.drawText(text, xPos, yPos, paint)
+
+                      // 3. Android Autoに送信 (メインスレッドで)
+                      withContext(Dispatchers.Main) {
+                          mediaSession.setMetadata(MediaMetadataCompat.Builder()
+                              .putString(MediaMetadataCompat.METADATA_KEY_TITLE, text) // 曲名として状態を表示
+                              .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, "Ambient Mode")
+                              .putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, bitmap)
+                              .build())
+                              
+                          // 通知も更新（頻度は低いのでOK）
+                          val mgr = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                          mgr.notify(NOTIFICATION_ID, buildNotification(bitmap, text))
+                      }
+                  }
+              }
+
+              override fun onLocationChanged(location: Location) {
+                  val speedKmh = location.speed * 3.6f
+                  
+                  // 速度が大きく変わった時だけ更新する（負荷軽減）
+                  if (Math.abs(speedKmh - lastSpeed) > 3.0) {
+                      lastSpeed = speedKmh
+                      if (speedKmh < 3) {
+                          updateState("STAY", Color.parseColor("#283593")) // 停止中: 藍色
+                      } else if (speedKmh < 40) {
+                          updateState("FLOW", Color.parseColor("#00695C")) // 走行中: ティール
+                      } else {
+                          updateState("DRIVE", Color.parseColor("#C62828")) // 高速: 赤茶
+                      }
+                  }
+              }
+
+              private fun buildNotification(bmp: Bitmap, text: String): Notification {
+                   val intent = Intent(this, MainActivity::class.java)
+                   val pendingIntent = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE)
+
+                   return NotificationCompat.Builder(this, CHANNEL_ID)
+                      .setContentTitle("Ambient Flow")
+                      .setContentText("Status: $text")
+                      .setSmallIcon(R.drawable.ic_launcher_foreground)
+                      .setLargeIcon(bmp)
+                      .setContentIntent(pendingIntent)
+                      .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                      .setStyle(MediaStyle().setMediaSession(mediaSession.sessionToken))
+                      .setOngoing(true)
+                      .build()
+              }
+
+              private fun createNotificationChannel() {
+                  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                      val channel = NotificationChannel(CHANNEL_ID, "Ambient Status", NotificationManager.IMPORTANCE_LOW)
+                      val mgr = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                      mgr.createNotificationChannel(channel)
+                  }
               }
 
               private fun setupLocation() {
                   if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
                       locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
                       try {
-                          locationManager?.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000, 1f, this)
+                          // 更新頻度も落とす（2秒ごと）
+                          locationManager?.requestLocationUpdates(LocationManager.GPS_PROVIDER, 2000, 2f, this)
                       } catch (e: Exception) { e.printStackTrace() }
                   }
               }
 
-              private fun startRendering() {
-                  isRunning = true
-                  renderScope.launch {
-                      while (isActive && isRunning) {
-                          time += currentSpeedFactor * 0.4
-                          for (y in 0 until HEIGHT) {
-                              val v = (y.toDouble() / HEIGHT) * 2.0 - 1.0
-                              val cy = cos(v * 4.0 - time)
-                              for (x in 0 until WIDTH) {
-                                  val u = (x.toDouble() / WIDTH) * 2.0 - 1.0
-                                  var val1 = sin(u * 4.0 + time)
-                                  var val2 = cy
-                                  var val3 = sin((u + v + time) * 2.0)
-                                  val f = (val1 + val2 + val3) / 3.0
-                                  
-                                  val r = (sin(f * Math.PI) * 127 + 128).toInt()
-                                  val g = (cos(f * Math.PI) * 127 + 128).toInt()
-                                  val b = (sin(f * Math.PI + time) * 127 + 128).toInt()
-                                  pixels[y * WIDTH + x] = Color.rgb(r, g, b)
-                              }
-                          }
-                          withContext(Dispatchers.Main) {
-                              bitmap.setPixels(pixels, 0, WIDTH, 0, 0, WIDTH, HEIGHT)
-                              updateMetadata(bitmap)
-                          }
-                          delay(33)
-                      }
-                  }
-              }
-
-              private fun updateMetadata(bmp: Bitmap) {
-                  mediaSession.setMetadata(MediaMetadataCompat.Builder()
-                      .putString(MediaMetadataCompat.METADATA_KEY_TITLE, " ")
-                      .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, " ")
-                      .putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, bmp)
-                      .build())
-              }
-
-              override fun onLocationChanged(location: Location) {
-                  currentSpeedFactor = 0.05f + (location.speed * 3.6f / 150f).coerceAtMost(0.8f)
-              }
-
               override fun onDestroy() {
                   isRunning = false
-                  renderScope.cancel()
                   locationManager?.removeUpdates(this)
                   mediaSession.isActive = false
                   mediaSession.release()
@@ -356,5 +405,5 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: AmbientFlow-Fix-APK
+          name: AmbientFlow-Simple-APK
           path: app/build/outputs/apk/debug/app-debug.apk
