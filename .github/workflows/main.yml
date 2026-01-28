@@ -1,4 +1,4 @@
-name: Build Android Auto App (Final)
+name: Build Android Auto Visualizer
 
 on:
   workflow_dispatch:
@@ -20,7 +20,7 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      # ★対策1：Gradle 8.6 を手動でインストールし、システムの9.3を上書きする
+      # Gradle 8.6 を使用（安定版）
       - name: Install Gradle 8.6
         shell: bash
         run: |
@@ -35,7 +35,7 @@ jobs:
           set -euxo pipefail
 
           PKG="com.example.drivesense"
-          APP_LABEL="Drive Sense"
+          APP_LABEL="Drive Visualizer"
 
           # 1. settings.gradle.kts
           cat > settings.gradle.kts <<EOF
@@ -58,7 +58,6 @@ jobs:
           EOF
 
           # 2. build.gradle.kts (Project)
-          # AGP 8.3.0 は Gradle 8.6 と完全に互換性があります
           cat > build.gradle.kts <<EOF
           plugins {
               id("com.android.application") version "8.3.0" apply false
@@ -89,10 +88,10 @@ jobs:
 
               defaultConfig {
                   applicationId = "$PKG"
-                  minSdk = 23
+                  minSdk = 24  // ビットマップ生成のため少し上げます
                   targetSdk = 34
                   versionCode = 1
-                  versionName = "1.0"
+                  versionName = "2.0"
               }
               buildTypes {
                   release { isMinifyEnabled = false }
@@ -107,8 +106,9 @@ jobs:
           dependencies {
               implementation("androidx.core:core-ktx:1.12.0")
               implementation("androidx.appcompat:appcompat:1.6.1")
-              // これがAndroid Auto用のメディアライブラリです
               implementation("androidx.media:media:1.7.0")
+              // GPS用
+              implementation("com.google.android.gms:play-services-location:21.0.1")
           }
           EOF
 
@@ -126,19 +126,19 @@ jobs:
           </automotiveApp>
           EOF
 
-          # Icons
+          # Icons (Dummy)
           cat > app/src/main/res/drawable/ic_launcher_background.xml <<EOF
           <vector xmlns:android="http://schemas.android.com/apk/res/android"
               android:width="108dp" android:height="108dp"
               android:viewportWidth="108" android:viewportHeight="108">
-              <path android:fillColor="#008577" android:pathData="M0,0h108v108h-108z"/>
+              <path android:fillColor="#000000" android:pathData="M0,0h108v108h-108z"/>
           </vector>
           EOF
           cat > app/src/main/res/drawable/ic_launcher_foreground.xml <<EOF
           <vector xmlns:android="http://schemas.android.com/apk/res/android"
               android:width="108dp" android:height="108dp"
               android:viewportWidth="108" android:viewportHeight="108">
-              <path android:fillColor="#FFFFFF" android:pathData="M54,26 A28,28 0 1,0 54,82 A28,28 0 1,0 54,26"/>
+              <path android:fillColor="#00FF00" android:pathData="M54,26 A28,28 0 1,0 54,82 A28,28 0 1,0 54,26"/>
           </vector>
           EOF
           cat > app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml <<EOF
@@ -149,10 +149,16 @@ jobs:
           EOF
           cp app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml
 
-          # Manifest
+          # Manifest (GPS権限を追加)
           cat > app/src/main/AndroidManifest.xml <<EOF
           <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="$PKG">
+              
+              <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+              <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+              <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+              <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+
               <application
                   android:label="$APP_LABEL"
                   android:allowBackup="true"
@@ -167,7 +173,8 @@ jobs:
 
                   <service
                       android:name=".DriveSenseMediaService"
-                      android:exported="true">
+                      android:exported="true"
+                      android:foregroundServiceType="location">
                       <intent-filter>
                           <action android:name="android.media.browse.MediaBrowserService" />
                       </intent-filter>
@@ -185,75 +192,197 @@ jobs:
           </manifest>
           EOF
 
-          # --- Kotlin Code ---
+          # --- Kotlin Code (ここが革新機能の心臓部) ---
+          
+          # 1. MainActivity (権限リクエスト用)
           cat > app/src/main/java/com/example/drivesense/MainActivity.kt <<EOF
           package $PKG
+          import android.Manifest
           import android.os.Bundle
           import androidx.appcompat.app.AppCompatActivity
+          import androidx.core.app.ActivityCompat
+
           class MainActivity : AppCompatActivity() {
               override fun onCreate(savedInstanceState: Bundle?) {
                   super.onCreate(savedInstanceState)
+                  // アプリ起動時に位置情報権限を求める
+                  ActivityCompat.requestPermissions(
+                      this,
+                      arrayOf(Manifest.permission.ACCESS_FINE_LOCATION),
+                      1
+                  )
               }
           }
           EOF
 
-          # ★対策2：インポート文を正しいライブラリ構成に修正
+          # 2. DriveSenseMediaService (ビジュアライザー本体)
           cat > app/src/main/java/com/example/drivesense/DriveSenseMediaService.kt <<EOF
           package $PKG
 
+          import android.Manifest
+          import android.annotation.SuppressLint
+          import android.content.Context
+          import android.content.pm.PackageManager
+          import android.graphics.Bitmap
+          import android.graphics.Canvas
+          import android.graphics.Color
+          import android.graphics.Paint
+          import android.location.Location
+          import android.location.LocationListener
+          import android.location.LocationManager
           import android.os.Bundle
-          // 重要：androidx.media ライブラリの仕様に合わせた正確なインポート
+          import android.os.Handler
+          import android.os.Looper
+          import androidx.core.content.ContextCompat
           import androidx.media.MediaBrowserServiceCompat
           import android.support.v4.media.MediaBrowserCompat
+          import android.support.v4.media.MediaMetadataCompat
           import android.support.v4.media.session.MediaSessionCompat
           import android.support.v4.media.session.PlaybackStateCompat
-          import android.support.v4.media.MediaMetadataCompat
+          import java.util.Calendar
 
-          class DriveSenseMediaService : MediaBrowserServiceCompat() {
+          class DriveSenseMediaService : MediaBrowserServiceCompat(), LocationListener {
               private lateinit var mediaSession: MediaSessionCompat
+              private var locationManager: LocationManager? = null
+              private val handler = Handler(Looper.getMainLooper())
+              private var currentSpeedKmH = 0f
+              
+              // ビジュアライザー更新用ループ
+              private val updateRunnable = object : Runnable {
+                  override fun run() {
+                      updateVisualizer()
+                      handler.postDelayed(this, 1000) // 1秒ごとに更新
+                  }
+              }
 
               override fun onCreate() {
                   super.onCreate()
-
+                  
+                  // メディアセッション初期化
                   mediaSession = MediaSessionCompat(this, "DriveSenseSession").apply {
                       setCallback(object : MediaSessionCompat.Callback() {})
                       isActive = true
-
-                      val state = PlaybackStateCompat.Builder()
+                      
+                      // 再生中状態にする
+                      setPlaybackState(PlaybackStateCompat.Builder()
                           .setActions(PlaybackStateCompat.ACTION_PLAY or PlaybackStateCompat.ACTION_PAUSE)
                           .setState(PlaybackStateCompat.STATE_PLAYING, 0L, 1.0f)
-                          .build()
-                      setPlaybackState(state)
-
-                      val metadata = MediaMetadataCompat.Builder()
-                          .putString(MediaMetadataCompat.METADATA_KEY_TITLE, "Drive Sense")
-                          .putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_TITLE, "Drive Sense")
-                          .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, "Active")
-                          .build()
-                      setMetadata(metadata)
+                          .build())
                   }
                   sessionToken = mediaSession.sessionToken
+
+                  // GPSセットアップ
+                  setupLocation()
+                  
+                  // ビジュアライザー開始
+                  handler.post(updateRunnable)
+              }
+
+              private fun setupLocation() {
+                  if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+                      locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
+                      try {
+                          locationManager?.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000, 1f, this)
+                      } catch (e: Exception) { e.printStackTrace() }
+                  }
+              }
+
+              // 位置情報更新時
+              override fun onLocationChanged(location: Location) {
+                  // m/s を km/h に変換
+                  currentSpeedKmH = location.speed * 3.6f
+                  updateVisualizer()
+              }
+
+              // ビジュアライザー描画ロジック（ここが「動的アルバムアート」の肝）
+              private fun updateVisualizer() {
+                  val speed = currentSpeedKmH.toInt()
+                  
+                  // 1. メタデータ（文字情報）の作成
+                  val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
+                  val weatherIcon = if (hour in 6..18) "☀" else "🌙" // 簡易的な昼夜判定
+                  val titleText = "Velocity: \$speed km/h"
+                  val subText = "Env: \$weatherIcon | Visualizer Active"
+
+                  // 2. 幾何学模様（Bitmap）の生成
+                  val artBitmap = generateGeometricArt(speed)
+
+                  // 3. Android Autoに送信
+                  val metadata = MediaMetadataCompat.Builder()
+                      .putString(MediaMetadataCompat.METADATA_KEY_TITLE, titleText)
+                      .putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_TITLE, titleText)
+                      .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, subText)
+                      .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, "Drive Sense OS")
+                      .putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, artBitmap) // ここで画像を送る
+                      .build()
+                      
+                  mediaSession.setMetadata(metadata)
+              }
+
+              // 速度に応じて変化する画像をプログラムで描く
+              private fun generateGeometricArt(speed: Int): Bitmap {
+                  val size = 512
+                  val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+                  val canvas = Canvas(bitmap)
+                  val paint = Paint().apply { isAntiAlias = true }
+
+                  // 背景色（速度が上がると少し赤みがかる）
+                  val redBg = (speed * 2).coerceIn(0, 50)
+                  canvas.drawColor(Color.rgb(10 + redBg, 10, 20))
+
+                  // 中心座標
+                  val cx = size / 2f
+                  val cy = size / 2f
+
+                  // 円の描画（速度に応じて大きくなる）
+                  val baseRadius = 100f
+                  val speedFactor = (speed * 2f).coerceIn(0f, 200f)
+                  
+                  // 外側のグロー効果
+                  paint.style = Paint.Style.STROKE
+                  paint.strokeWidth = 5f
+                  paint.color = if (speed > 50) Color.RED else Color.CYAN
+                  paint.alpha = 100
+                  canvas.drawCircle(cx, cy, baseRadius + speedFactor + 20, paint)
+
+                  // メインの円
+                  paint.style = Paint.Style.FILL
+                  paint.color = if (speed > 80) Color.MAGENTA else if (speed > 40) Color.YELLOW else Color.BLUE
+                  paint.alpha = 200
+                  canvas.drawCircle(cx, cy, baseRadius + speedFactor, paint)
+
+                  // 幾何学的なライン
+                  paint.color = Color.WHITE
+                  paint.strokeWidth = 3f
+                  paint.style = Paint.Style.STROKE
+                  canvas.drawLine(0f, cy, size.toFloat(), cy, paint)
+                  canvas.drawLine(cx, 0f, cx, size.toFloat(), paint)
+                  
+                  // 速度の円環
+                  paint.style = Paint.Style.STROKE
+                  paint.strokeWidth = 10f
+                  canvas.drawArc(50f, 50f, size-50f, size-50f, 135f, speed.toFloat() * 2, false, paint)
+
+                  return bitmap
               }
 
               override fun onDestroy() {
+                  handler.removeCallbacks(updateRunnable)
+                  locationManager?.removeUpdates(this)
                   mediaSession.isActive = false
                   mediaSession.release()
                   super.onDestroy()
               }
 
-              override fun onGetRoot(
-                  clientPackageName: String,
-                  clientUid: Int,
-                  rootHints: Bundle?
-              ): BrowserRoot {
-                  // Android Autoからの接続を許可
+              // その他のLocationListener必須メソッド
+              override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
+              override fun onProviderEnabled(provider: String) {}
+              override fun onProviderDisabled(provider: String) {}
+              
+              override fun onGetRoot(clientPackageName: String, clientUid: Int, rootHints: Bundle?): BrowserRoot {
                   return BrowserRoot("ROOT", null)
               }
-
-              override fun onLoadChildren(
-                  parentId: String,
-                  result: Result<MutableList<MediaBrowserCompat.MediaItem>>
-              ) {
+              override fun onLoadChildren(parentId: String, result: Result<MutableList<MediaBrowserCompat.MediaItem>>) {
                   result.sendResult(mutableListOf())
               }
           }
@@ -263,11 +392,10 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          # 手動インストールしたGradle 8.6を使用
           gradle assembleDebug --no-daemon
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: DriveSense-APK
+          name: DriveSense-Visualizer-APK
           path: app/build/outputs/apk/debug/app-debug.apk
