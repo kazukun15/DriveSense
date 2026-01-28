@@ -1,4 +1,4 @@
-name: Build Ambient Flow (Weather & Silent)
+name: Build Ambient Flow (Fix Visibility)
 
 on:
   workflow_dispatch:
@@ -33,7 +33,8 @@ jobs:
         run: |
           set -euxo pipefail
 
-          PKG="com.example.ambientflow"
+          # ★変更点1：パッケージ名を「com.example」以外にする（重要）
+          PKG="jp.kazukun.ambient"
           APP_LABEL="Ambient Flow"
 
           # 1. Settings
@@ -56,7 +57,7 @@ jobs:
           include(":app")
           EOF
 
-          # 2. Project Build Gradle
+          # 2. Build Gradle (Project)
           cat > build.gradle.kts <<EOF
           plugins {
               id("com.android.application") version "8.3.0" apply false
@@ -74,7 +75,7 @@ jobs:
           EOF
 
           # 4. App Module
-          mkdir -p app/src/main/{java/com/example/ambientflow,res/xml,res/values,res/drawable,res/mipmap-anydpi-v26}
+          mkdir -p app/src/main/{java/jp/kazukun/ambient,res/xml,res/values,res/drawable,res/mipmap-anydpi-v26}
 
           cat > app/build.gradle.kts <<EOF
           plugins {
@@ -90,14 +91,11 @@ jobs:
                   applicationId = "$PKG"
                   minSdk = 26
                   targetSdk = 34
-                  versionCode = 1
-                  versionName = "4.0.Weather"
+                  versionCode = 2
+                  versionName = "2.0.Fix"
               }
               buildTypes {
-                  release {
-                      isMinifyEnabled = true
-                      proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-                  }
+                  release { isMinifyEnabled = false }
               }
               compileOptions {
                   sourceCompatibility = JavaVersion.VERSION_17
@@ -134,7 +132,7 @@ jobs:
           <vector xmlns:android="http://schemas.android.com/apk/res/android"
               android:width="108dp" android:height="108dp"
               android:viewportWidth="108" android:viewportHeight="108">
-              <path android:fillColor="#212121" android:pathData="M0,0h108v108h-108z"/>
+              <path android:fillColor="#000000" android:pathData="M0,0h108v108h-108z"/>
           </vector>
           EOF
           cat > app/src/main/res/drawable/ic_launcher_foreground.xml <<EOF
@@ -153,13 +151,17 @@ jobs:
           cp app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml
 
           # Manifest
+          # ★変更点2：Android 14 (API 34) に必要な権限を全て追加
           cat > app/src/main/AndroidManifest.xml <<EOF
           <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="$PKG">
+              
               <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
               <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
               <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
               <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+              <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+              <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
               <uses-permission android:name="android.permission.INTERNET" />
 
               <application
@@ -177,7 +179,7 @@ jobs:
                   <service
                       android:name=".AmbientMediaService"
                       android:exported="true"
-                      android:foregroundServiceType="location">
+                      android:foregroundServiceType="location|mediaPlayback">
                       <intent-filter>
                           <action android:name="android.media.browse.MediaBrowserService" />
                       </intent-filter>
@@ -198,10 +200,11 @@ jobs:
 
           # --- Kotlin Code ---
           # 1. MainActivity
-          cat > app/src/main/java/com/example/ambientflow/MainActivity.kt <<EOF
+          cat > app/src/main/java/jp/kazukun/ambient/MainActivity.kt <<EOF
           package $PKG
           import android.Manifest
           import android.content.pm.PackageManager
+          import android.os.Build
           import android.os.Bundle
           import androidx.appcompat.app.AppCompatActivity
           import androidx.core.app.ActivityCompat
@@ -210,17 +213,21 @@ jobs:
           class MainActivity : AppCompatActivity() {
               override fun onCreate(savedInstanceState: Bundle?) {
                   super.onCreate(savedInstanceState)
-                  // 権限リクエスト
-                  val perms = arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
-                  if (ContextCompat.checkSelfPermission(this, perms[0]) != PackageManager.PERMISSION_GRANTED) {
-                      ActivityCompat.requestPermissions(this, perms, 99)
+                  
+                  val perms = mutableListOf(Manifest.permission.ACCESS_FINE_LOCATION)
+                  if (Build.VERSION.SDK_INT >= 33) {
+                      perms.add(Manifest.permission.POST_NOTIFICATIONS)
+                  }
+                  
+                  if (perms.any { ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED }) {
+                      ActivityCompat.requestPermissions(this, perms.toTypedArray(), 99)
                   }
               }
           }
           EOF
 
-          # 2. AmbientMediaService (天気・速度連動ビジュアライザー)
-          cat > app/src/main/java/com/example/ambientflow/AmbientMediaService.kt <<EOF
+          # 2. Service
+          cat > app/src/main/java/jp/kazukun/ambient/AmbientMediaService.kt <<EOF
           package $PKG
 
           import android.Manifest
@@ -239,28 +246,16 @@ jobs:
           import androidx.core.content.ContextCompat
           import androidx.media.MediaBrowserServiceCompat
           import kotlinx.coroutines.*
-          import org.json.JSONObject
-          import java.net.URL
           import kotlin.math.*
 
           class AmbientMediaService : MediaBrowserServiceCompat(), LocationListener {
               private lateinit var mediaSession: MediaSessionCompat
               private var locationManager: LocationManager? = null
-              
               private val renderScope = CoroutineScope(Dispatchers.Default + Job())
               private var isRunning = false
-              
-              // 状態変数
               private var currentSpeedFactor = 0.1f
               private var time = 0.0
               
-              // 天気による色調整 (R,G,B の重み)
-              private var colorR = 1.0
-              private var colorG = 1.0
-              private var colorB = 1.0
-              private var weatherState = "Loading..."
-
-              // 解像度
               private val WIDTH = 512
               private val HEIGHT = 512
               private val pixels = IntArray(WIDTH * HEIGHT)
@@ -268,29 +263,20 @@ jobs:
 
               override fun onCreate() {
                   super.onCreate()
-                  setupMediaSession()
-                  setupLocation()
-                  startRendering()
-                  // 天気取得ループ開始
-                  startWeatherUpdates()
-              }
-
-              private fun setupMediaSession() {
+                  
                   mediaSession = MediaSessionCompat(this, "AmbientFlowSession").apply {
                       setCallback(object : MediaSessionCompat.Callback() {})
                       isActive = true
-                      
-                      // ★重要：オーディオフォーカスを要求しない設定
-                      // AudioAttributesなどをあえて設定せず、再生状態のみ通知する
                       setPlaybackState(PlaybackStateCompat.Builder()
                           .setActions(PlaybackStateCompat.ACTION_PLAY or PlaybackStateCompat.ACTION_PAUSE)
                           .setState(PlaybackStateCompat.STATE_PLAYING, 0L, 1.0f)
                           .build())
-
-                      // 初期表示
                       updateMetadata(bitmap)
                   }
                   sessionToken = mediaSession.sessionToken
+                  
+                  setupLocation()
+                  startRendering()
               }
 
               private fun setupLocation() {
@@ -302,97 +288,27 @@ jobs:
                   }
               }
 
-              // 天気API (Open-Meteo) から情報を取得
-              private fun startWeatherUpdates() {
-                  renderScope.launch(Dispatchers.IO) {
-                      while (isActive && isRunning) {
-                          try {
-                              val loc = locationManager?.getLastKnownLocation(LocationManager.GPS_PROVIDER)
-                              if (loc != null) {
-                                  val url = "https://api.open-meteo.com/v1/forecast?latitude=\${loc.latitude}&longitude=\${loc.longitude}&current_weather=true"
-                                  val json = URL(url).readText()
-                                  val current = JSONObject(json).getJSONObject("current_weather")
-                                  val code = current.getInt("weathercode")
-                                  
-                                  // 天気コードに基づく色変化
-                                  updateWeatherColor(code)
-                              }
-                          } catch (e: Exception) {
-                              e.printStackTrace()
-                          }
-                          delay(10 * 60 * 1000) // 10分ごとに更新
-                      }
-                  }
-              }
-
-              private fun updateWeatherColor(code: Int) {
-                  // WMO Weather interpretation codes
-                  when (code) {
-                      0, 1 -> { // 快晴
-                          weatherState = "Sunny"
-                          setColor(1.2, 0.8, 0.4) // 金色・オレンジ系
-                      }
-                      2, 3 -> { // 曇り
-                          weatherState = "Cloudy"
-                          setColor(0.8, 0.9, 1.0) // シルバー・白系
-                      }
-                      in 51..67, in 80..82 -> { // 雨
-                          weatherState = "Rainy"
-                          setColor(0.4, 0.6, 1.3) // 深い青・紫系
-                      }
-                      in 71..77, in 85..86 -> { // 雪
-                          weatherState = "Snowy"
-                          setColor(0.9, 1.0, 1.2) // 氷のような青白
-                      }
-                      else -> {
-                          weatherState = "Neutral"
-                          setColor(1.0, 0.5, 0.8) // デフォルト（マゼンタ系）
-                      }
-                  }
-              }
-              
-              private fun setColor(r: Double, g: Double, b: Double) {
-                  colorR = r; colorG = g; colorB = b
-              }
-
-              override fun onLocationChanged(location: Location) {
-                  val speedKmh = location.speed * 3.6f
-                  // 速度連動: スピードが出ると動きが激しくなる
-                  currentSpeedFactor = 0.05f + (speedKmh / 150f).coerceAtMost(0.8f)
-              }
-
-              // プラズマ生成ロジック
               private fun startRendering() {
                   isRunning = true
                   renderScope.launch {
                       while (isActive && isRunning) {
                           time += currentSpeedFactor * 0.4
-
                           for (y in 0 until HEIGHT) {
                               val v = (y.toDouble() / HEIGHT) * 2.0 - 1.0
-                              // 高速化のためYループ外で計算できるものはする
                               val cy = cos(v * 4.0 - time)
-                              
                               for (x in 0 until WIDTH) {
                                   val u = (x.toDouble() / WIDTH) * 2.0 - 1.0
-                                  
-                                  // プラズマ計算
                                   var val1 = sin(u * 4.0 + time)
                                   var val2 = cy
                                   var val3 = sin((u + v + time) * 2.0)
-                                  var val4 = cos(sqrt(u*u + v*v) * 5.0 - time)
+                                  val f = (val1 + val2 + val3) / 3.0
                                   
-                                  val f = (val1 + val2 + val3 + val4) / 4.0
-
-                                  // 天気に応じた色適用
-                                  val r = ((sin(f * Math.PI) * 127 + 128) * colorR).toInt().coerceIn(0, 255)
-                                  val g = ((cos(f * Math.PI) * 127 + 128) * colorG).toInt().coerceIn(0, 255)
-                                  val b = ((sin(f * Math.PI + time) * 127 + 128) * colorB).toInt().coerceIn(0, 255)
-
+                                  val r = (sin(f * Math.PI) * 127 + 128).toInt()
+                                  val g = (cos(f * Math.PI) * 127 + 128).toInt()
+                                  val b = (sin(f * Math.PI + time) * 127 + 128).toInt()
                                   pixels[y * WIDTH + x] = Color.rgb(r, g, b)
                               }
                           }
-
                           withContext(Dispatchers.Main) {
                               bitmap.setPixels(pixels, 0, WIDTH, 0, 0, WIDTH, HEIGHT)
                               updateMetadata(bitmap)
@@ -403,14 +319,15 @@ jobs:
               }
 
               private fun updateMetadata(bmp: Bitmap) {
-                  // タイトル等は最小限にして、アートを強調
-                  val metadata = MediaMetadataCompat.Builder()
-                      .putString(MediaMetadataCompat.METADATA_KEY_TITLE, " ") 
+                  mediaSession.setMetadata(MediaMetadataCompat.Builder()
+                      .putString(MediaMetadataCompat.METADATA_KEY_TITLE, " ")
                       .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, " ")
-                      .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, weatherState) // 天気状態をアルバム名にこっそり表示
                       .putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, bmp)
-                      .build()
-                  mediaSession.setMetadata(metadata)
+                      .build())
+              }
+
+              override fun onLocationChanged(location: Location) {
+                  currentSpeedFactor = 0.05f + (location.speed * 3.6f / 150f).coerceAtMost(0.8f)
               }
 
               override fun onDestroy() {
@@ -421,17 +338,12 @@ jobs:
                   mediaSession.release()
                   super.onDestroy()
               }
-
-              // Stub methods
+              
               override fun onStatusChanged(p: String?, s: Int, e: Bundle?) {}
               override fun onProviderEnabled(p: String) {}
               override fun onProviderDisabled(p: String) {}
-              override fun onGetRoot(pkg: String, uid: Int, root: Bundle?): BrowserRoot {
-                  return BrowserRoot("ROOT", null)
-              }
-              override fun onLoadChildren(id: String, res: Result<MutableList<MediaBrowserCompat.MediaItem>>) {
-                  res.sendResult(mutableListOf())
-              }
+              override fun onGetRoot(pkg: String, uid: Int, root: Bundle?): BrowserRoot { return BrowserRoot("ROOT", null) }
+              override fun onLoadChildren(id: String, res: Result<MutableList<MediaBrowserCompat.MediaItem>>) { res.sendResult(mutableListOf()) }
           }
           EOF
 
@@ -444,5 +356,5 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: AmbientFlow-Weather-APK
+          name: AmbientFlow-Fix-APK
           path: app/build/outputs/apk/debug/app-debug.apk
