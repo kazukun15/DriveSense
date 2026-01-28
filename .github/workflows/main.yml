@@ -20,13 +20,20 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
+      # 【ここが修正の決定打】
+      # システムのGradle(9.3)を無視し、このアクションで「8.6」を強制セットアップします。
+      # これにより、後続のコマンドはすべて安全なGradle 8.6で実行されます。
+      - name: Setup Gradle 8.6
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.6'
+
       - name: Generate Project Files
         run: |
           PKG="com.example.drivesense"
           APP_LABEL="Drive Sense"
           
-          # --- 1. Gradle設定ファイル生成 ---
-          # ルート設定
+          # --- 1. Gradle設定 ---
           cat > settings.gradle.kts <<EOF
           pluginManagement {
               repositories {
@@ -46,9 +53,8 @@ jobs:
           include(":app")
           EOF
 
-          # ルート build.gradle.kts
-          # ※バージョンは安定版の組み合わせ（AGP 8.2.0 / Kotlin 1.9.20）を維持
           cat > build.gradle.kts <<EOF
+          // 安定版のプラグインバージョンを指定
           plugins {
               id("com.android.application") version "8.2.0" apply false
               id("org.jetbrains.kotlin.android") version "1.9.20" apply false
@@ -58,7 +64,6 @@ jobs:
           # --- 2. アプリモジュール作成 ---
           mkdir -p app/src/main/{java/com/example/drivesense,res/xml,res/values,res/drawable,res/mipmap-anydpi-v26}
 
-          # app/build.gradle.kts
           cat > app/build.gradle.kts <<EOF
           plugins {
               id("com.android.application")
@@ -94,14 +99,12 @@ jobs:
           EOF
 
           # --- 3. リソース生成 ---
-          # strings.xml
           cat > app/src/main/res/values/strings.xml <<EOF
           <resources>
               <string name="app_name">$APP_LABEL</string>
           </resources>
           EOF
 
-          # Android Auto設定 (automotive_app_desc.xml)
           cat > app/src/main/res/xml/automotive_app_desc.xml <<EOF
           <?xml version="1.0" encoding="utf-8"?>
           <automotiveApp xmlns:android="http://schemas.android.com/apk/res/android">
@@ -109,7 +112,7 @@ jobs:
           </automotiveApp>
           EOF
 
-          # アイコン (ダミー作成)
+          # アイコン (ダミー)
           cat > app/src/main/res/drawable/ic_launcher_background.xml <<EOF
           <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
               <path android:fillColor="#008577" android:pathData="M0,0h108v108h-108z"/>
@@ -128,7 +131,7 @@ jobs:
           EOF
           cp app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml
 
-          # AndroidManifest.xml
+          # マニフェスト
           cat > app/src/main/AndroidManifest.xml <<EOF
           <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
@@ -159,7 +162,6 @@ jobs:
           EOF
 
           # --- 4. Kotlinコード生成 ---
-          # MainActivity.kt
           cat > app/src/main/java/com/example/drivesense/MainActivity.kt <<EOF
           package $PKG
           import android.os.Bundle
@@ -171,7 +173,6 @@ jobs:
           }
           EOF
 
-          # DriveSenseMediaService.kt
           cat > app/src/main/java/com/example/drivesense/DriveSenseMediaService.kt <<EOF
           package $PKG
           import android.os.Bundle
@@ -218,16 +219,9 @@ jobs:
           }
           EOF
 
-      # --- ここが修正ポイント ---
-      # システムのGradle(9.3)を使って、バージョン8.6のWrapperを生成します
-      - name: Setup Gradle Wrapper (Force 8.6)
-        run: gradle wrapper --gradle-version 8.6
-
-      # Wrapperを使ってビルドします（./gradlew を使うことで8.6で実行されます）
-      - name: Build APK
-        run: |
-          chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon
+      - name: Build APK (with Force 8.6)
+        # 上記のセットアップでgradleコマンドが8.6に置き換わっているので、そのまま実行します
+        run: gradle assembleDebug --no-daemon
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
