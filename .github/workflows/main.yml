@@ -1,7 +1,7 @@
 name: Build Android Auto App
 
 on:
-  workflow_dispatch: # 手動ボタンで開始
+  workflow_dispatch:
 
 jobs:
   build:
@@ -14,26 +14,25 @@ jobs:
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
-          java-version: '17'
-          distribution: 'temurin'
+          java-version: "17"
+          distribution: "temurin"
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      # 【ここが修正の決定打】
-      # システムのGradle(9.3)を無視し、このアクションで「8.6」を強制セットアップします。
-      # これにより、後続のコマンドはすべて安全なGradle 8.6で実行されます。
-      - name: Setup Gradle 8.6
-        uses: gradle/actions/setup-gradle@v3
-        with:
-          gradle-version: '8.6'
+      # Wrapper/Gradleのキャッシュと、Wrapper優先運用に寄せる
+      - name: Setup Gradle (cache)
+        uses: gradle/actions/setup-gradle@v4
 
       - name: Generate Project Files
+        shell: bash
         run: |
+          set -euxo pipefail
+
           PKG="com.example.drivesense"
           APP_LABEL="Drive Sense"
-          
-          # --- 1. Gradle設定 ---
+
+          # --- 1. settings.gradle.kts ---
           cat > settings.gradle.kts <<EOF
           pluginManagement {
               repositories {
@@ -53,15 +52,24 @@ jobs:
           include(":app")
           EOF
 
+          # --- 2. ルート build.gradle.kts ---
+          # AGP 8.4.x は Gradle 8.6 が前提（互換性を揃える） :contentReference[oaicite:1]{index=1}
           cat > build.gradle.kts <<EOF
-          // 安定版のプラグインバージョンを指定
           plugins {
-              id("com.android.application") version "8.2.0" apply false
-              id("org.jetbrains.kotlin.android") version "1.9.20" apply false
+              id("com.android.application") version "8.4.2" apply false
+              id("org.jetbrains.kotlin.android") version "1.9.24" apply false
           }
           EOF
 
-          # --- 2. アプリモジュール作成 ---
+          # --- 3. gradle.properties（CIでの安定性UP） ---
+          cat > gradle.properties <<EOF
+          org.gradle.jvmargs=-Xmx3g -Dfile.encoding=UTF-8
+          android.useAndroidX=true
+          android.enableJetifier=true
+          kotlin.code.style=official
+          EOF
+
+          # --- 4. appモジュール作成 ---
           mkdir -p app/src/main/{java/com/example/drivesense,res/xml,res/values,res/drawable,res/mipmap-anydpi-v26}
 
           cat > app/build.gradle.kts <<EOF
@@ -81,9 +89,11 @@ jobs:
                   versionCode = 1
                   versionName = "1.0"
               }
+
               buildTypes {
                   release { isMinifyEnabled = false }
               }
+
               compileOptions {
                   sourceCompatibility = JavaVersion.VERSION_17
                   targetCompatibility = JavaVersion.VERSION_17
@@ -98,7 +108,7 @@ jobs:
           }
           EOF
 
-          # --- 3. リソース生成 ---
+          # --- resources ---
           cat > app/src/main/res/values/strings.xml <<EOF
           <resources>
               <string name="app_name">$APP_LABEL</string>
@@ -112,17 +122,18 @@ jobs:
           </automotiveApp>
           EOF
 
-          # アイコン (ダミー)
           cat > app/src/main/res/drawable/ic_launcher_background.xml <<EOF
           <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
               <path android:fillColor="#008577" android:pathData="M0,0h108v108h-108z"/>
           </vector>
           EOF
+
           cat > app/src/main/res/drawable/ic_launcher_foreground.xml <<EOF
           <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
               <path android:fillColor="#FFFFFF" android:pathData="M54,26 A28,28 0 1,0 54,82 A28,28 0 1,0 54,26"/>
           </vector>
           EOF
+
           cat > app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml <<EOF
           <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
               <background android:drawable="@drawable/ic_launcher_background"/>
@@ -131,10 +142,12 @@ jobs:
           EOF
           cp app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml
 
-          # マニフェスト
+          # --- Manifest（package を明示：相対クラス名の解決を確実に） ---
           cat > app/src/main/AndroidManifest.xml <<EOF
           <?xml version="1.0" encoding="utf-8"?>
-          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+              package="$PKG">
+
               <application
                   android:label="$APP_LABEL"
                   android:allowBackup="true"
@@ -142,30 +155,38 @@ jobs:
                   android:icon="@mipmap/ic_launcher"
                   android:roundIcon="@mipmap/ic_launcher_round"
                   android:theme="@style/Theme.AppCompat.Light.NoActionBar">
-                  
-                  <meta-data android:name="com.google.android.gms.car.application" android:resource="@xml/automotive_app_desc" />
 
-                  <service android:name=".DriveSenseMediaService" android:exported="true">
+                  <meta-data
+                      android:name="com.google.android.gms.car.application"
+                      android:resource="@xml/automotive_app_desc" />
+
+                  <service
+                      android:name=".DriveSenseMediaService"
+                      android:exported="true">
                       <intent-filter>
                           <action android:name="android.media.browse.MediaBrowserService" />
                       </intent-filter>
                   </service>
 
-                  <activity android:name=".MainActivity" android:exported="true">
+                  <activity
+                      android:name=".MainActivity"
+                      android:exported="true">
                       <intent-filter>
                           <action android:name="android.intent.action.MAIN" />
                           <category android:name="android.intent.category.LAUNCHER" />
                       </intent-filter>
                   </activity>
+
               </application>
           </manifest>
           EOF
 
-          # --- 4. Kotlinコード生成 ---
+          # --- Kotlin ---
           cat > app/src/main/java/com/example/drivesense/MainActivity.kt <<EOF
           package $PKG
           import android.os.Bundle
           import androidx.appcompat.app.AppCompatActivity
+
           class MainActivity : AppCompatActivity() {
               override fun onCreate(savedInstanceState: Bundle?) {
                   super.onCreate(savedInstanceState)
@@ -175,6 +196,7 @@ jobs:
 
           cat > app/src/main/java/com/example/drivesense/DriveSenseMediaService.kt <<EOF
           package $PKG
+
           import android.os.Bundle
           import android.support.v4.media.MediaBrowserCompat
           import android.support.v4.media.MediaBrowserServiceCompat
@@ -184,12 +206,14 @@ jobs:
 
           class DriveSenseMediaService : MediaBrowserServiceCompat() {
               private lateinit var mediaSession: MediaSessionCompat
+
               override fun onCreate() {
                   super.onCreate()
+
                   mediaSession = MediaSessionCompat(this, "DriveSenseSession").apply {
                       setCallback(object : MediaSessionCompat.Callback() {})
                       isActive = true
-                      
+
                       val state = PlaybackStateCompat.Builder()
                           .setActions(PlaybackStateCompat.ACTION_PLAY or PlaybackStateCompat.ACTION_PAUSE)
                           .setState(PlaybackStateCompat.STATE_PLAYING, 0L, 1.0f)
@@ -203,25 +227,41 @@ jobs:
                           .build()
                       setMetadata(metadata)
                   }
+
                   sessionToken = mediaSession.sessionToken
               }
+
               override fun onDestroy() {
                   mediaSession.isActive = false
                   mediaSession.release()
                   super.onDestroy()
               }
+
               override fun onGetRoot(clientPackageName: String, clientUid: Int, rootHints: Bundle?): BrowserRoot {
                   return BrowserRoot("ROOT", null)
               }
+
               override fun onLoadChildren(parentId: String, result: Result<MutableList<MediaBrowserCompat.MediaItem>>) {
                   result.sendResult(mutableListOf())
               }
           }
           EOF
 
-      - name: Build APK (with Force 8.6)
-        # 上記のセットアップでgradleコマンドが8.6に置き換わっているので、そのまま実行します
-        run: gradle assembleDebug --no-daemon
+      # ★重要：Wrapperを 8.6 に固定（AGP 8.4.x の前提） :contentReference[oaicite:2]{index=2}
+      - name: Setup Gradle Wrapper (Force 8.6)
+        shell: bash
+        run: |
+          set -euxo pipefail
+          gradle wrapper --gradle-version 8.6 --distribution-type bin
+          chmod +x gradlew
+          ./gradlew --version
+
+      # ★重要：必ず ./gradlew を使う（system gradle 9.3 を踏まない）
+      - name: Build APK
+        shell: bash
+        run: |
+          set -euxo pipefail
+          ./gradlew assembleDebug --no-daemon
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
