@@ -25,7 +25,8 @@ jobs:
           PKG="com.example.drivesense"
           APP_LABEL="Drive Sense"
           
-          # 1. ルート設定
+          # --- 1. Gradle設定ファイル生成 ---
+          # ルート設定
           cat > settings.gradle.kts <<EOF
           pluginManagement {
               repositories {
@@ -45,6 +46,8 @@ jobs:
           include(":app")
           EOF
 
+          # ルート build.gradle.kts
+          # ※バージョンは安定版の組み合わせ（AGP 8.2.0 / Kotlin 1.9.20）を維持
           cat > build.gradle.kts <<EOF
           plugins {
               id("com.android.application") version "8.2.0" apply false
@@ -52,10 +55,10 @@ jobs:
           }
           EOF
 
-          # 2. アプリモジュール作成
+          # --- 2. アプリモジュール作成 ---
           mkdir -p app/src/main/{java/com/example/drivesense,res/xml,res/values,res/drawable,res/mipmap-anydpi-v26}
 
-          # build.gradle.kts (App)
+          # app/build.gradle.kts
           cat > app/build.gradle.kts <<EOF
           plugins {
               id("com.android.application")
@@ -90,13 +93,15 @@ jobs:
           }
           EOF
 
-          # 3. リソース生成
+          # --- 3. リソース生成 ---
+          # strings.xml
           cat > app/src/main/res/values/strings.xml <<EOF
           <resources>
               <string name="app_name">$APP_LABEL</string>
           </resources>
           EOF
 
+          # Android Auto設定 (automotive_app_desc.xml)
           cat > app/src/main/res/xml/automotive_app_desc.xml <<EOF
           <?xml version="1.0" encoding="utf-8"?>
           <automotiveApp xmlns:android="http://schemas.android.com/apk/res/android">
@@ -104,7 +109,7 @@ jobs:
           </automotiveApp>
           EOF
 
-          # アイコン (ダミー)
+          # アイコン (ダミー作成)
           cat > app/src/main/res/drawable/ic_launcher_background.xml <<EOF
           <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
               <path android:fillColor="#008577" android:pathData="M0,0h108v108h-108z"/>
@@ -123,7 +128,7 @@ jobs:
           EOF
           cp app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml
 
-          # マニフェスト
+          # AndroidManifest.xml
           cat > app/src/main/AndroidManifest.xml <<EOF
           <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
@@ -153,7 +158,8 @@ jobs:
           </manifest>
           EOF
 
-          # 4. Kotlinコード
+          # --- 4. Kotlinコード生成 ---
+          # MainActivity.kt
           cat > app/src/main/java/com/example/drivesense/MainActivity.kt <<EOF
           package $PKG
           import android.os.Bundle
@@ -165,6 +171,7 @@ jobs:
           }
           EOF
 
+          # DriveSenseMediaService.kt
           cat > app/src/main/java/com/example/drivesense/DriveSenseMediaService.kt <<EOF
           package $PKG
           import android.os.Bundle
@@ -211,9 +218,12 @@ jobs:
           }
           EOF
 
-      - name: Setup Gradle Wrapper (Fix Version)
-        run: gradle wrapper --gradle-version 8.4
+      # --- ここが修正ポイント ---
+      # システムのGradle(9.3)を使って、バージョン8.6のWrapperを生成します
+      - name: Setup Gradle Wrapper (Force 8.6)
+        run: gradle wrapper --gradle-version 8.6
 
+      # Wrapperを使ってビルドします（./gradlew を使うことで8.6で実行されます）
       - name: Build APK
         run: |
           chmod +x gradlew
