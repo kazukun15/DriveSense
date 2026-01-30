@@ -1,4 +1,4 @@
-name: Build Ambient Flow (Premium Fix)
+name: Build Ambient Flow (Final Fix)
 
 on:
   workflow_dispatch:
@@ -93,8 +93,8 @@ jobs:
                   applicationId = "$PKG"
                   minSdk = 26
                   targetSdk = 35
-                  versionCode = 11
-                  versionName = "5.0.PremiumFix"
+                  versionCode = 12
+                  versionName = "5.1.FinalFix"
               }
               buildTypes {
                   release { isMinifyEnabled = false }
@@ -192,7 +192,7 @@ jobs:
           </manifest>
           EOF
 
-          # --- 8. Kotlin: MainActivity (Fixing $ issue) ---
+          # --- 8. Kotlin: MainActivity ---
           cat > app/src/main/java/jp/kazukun/ambient/MainActivity.kt <<EOF
           package $PKG
           import android.Manifest
@@ -232,8 +232,8 @@ jobs:
           }
           EOF
 
-          # --- 9. Kotlin: Service (Premium Visuals & Bug Fix) ---
-          # 注意: ここで \$ を使って変数展開を防いでいます
+          # --- 9. Kotlin: Service (Fixed Variables & Visuals) ---
+          # 重要な修正: 変数の頭にバックスラッシュを付けて、YAMLでの誤動作を防ぎます
           cat > app/src/main/java/jp/kazukun/ambient/AmbientMediaService.kt <<EOF
           package $PKG
 
@@ -262,7 +262,6 @@ jobs:
               private var locationManager: LocationManager? = null
               private val scope = CoroutineScope(Dispatchers.Default + Job())
               
-              // ★超高解像度化: 1024px で描画し、全画面での美しさを向上
               private val BITMAP_SIZE = 1024
               private val bitmap = Bitmap.createBitmap(BITMAP_SIZE, BITMAP_SIZE, Bitmap.Config.ARGB_8888)
               private val canvas = Canvas(bitmap)
@@ -271,21 +270,22 @@ jobs:
               private val textPaint = Paint().apply {
                   isAntiAlias = true
                   textAlign = Paint.Align.CENTER
-                  color = Color.parseColor("#F5F5F5") // 高級感のあるオフホワイト
-                  textSize = 120f // 大きく
+                  color = Color.parseColor("#FFFFFF") // 純白で見やすく
+                  textSize = 120f 
                   typeface = Typeface.create(Typeface.SERIF, Typeface.BOLD)
-                  setShadowLayer(20f, 0f, 0f, Color.parseColor("#99000000"))
+                  setShadowLayer(25f, 0f, 0f, Color.BLACK)
               }
               private val subTextPaint = Paint().apply {
                   isAntiAlias = true
                   textAlign = Paint.Align.CENTER
-                  color = Color.parseColor("#B0BEC5")
+                  color = Color.parseColor("#DDDDDD")
                   textSize = 60f
                   typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.NORMAL)
+                  setShadowLayer(10f, 0f, 0f, Color.BLACK)
               }
               private val bgPaint = Paint().apply { isAntiAlias = true }
 
-              // ★Peugeot 308 i-Cockpit Inspired Gradients
+              // ★Peugeot 308 i-Cockpit Inspired Gradients (Brightness Adjusted)
               private val stayShader = LinearGradient(0f, 0f, 0f, BITMAP_SIZE.toFloat(),
                   Color.parseColor("#050510"), Color.parseColor("#1A237E"), Shader.TileMode.CLAMP) // Midnight Blue
               private val flowShader = LinearGradient(0f, 0f, 0f, BITMAP_SIZE.toFloat(),
@@ -323,6 +323,7 @@ jobs:
                   
                   hasPermission = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
                   
+                  // ★起動時に必ず一度画面を更新する（真っ暗対策）
                   if (hasPermission) {
                       setupLocation()
                       updateState("READY", stayShader)
@@ -332,7 +333,6 @@ jobs:
               }
 
               override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-                  // Android 14+ Crash Prevention
                   try {
                       if (Build.VERSION.SDK_INT >= 34) {
                           if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
@@ -348,6 +348,10 @@ jobs:
                   } catch (e: Exception) {
                       // Fallback
                   }
+                  
+                  // 強制更新（念のため）
+                  updateState("Ambient", stayShader)
+                  
                   return START_STICKY
               }
 
@@ -370,7 +374,6 @@ jobs:
                       val yPos = (canvas.height / 2).toFloat()
                       
                       canvas.drawText(text, xPos, yPos + 20f, textPaint)
-                      // Subtext for context
                       canvas.drawText("Ambient Flow", xPos, yPos + 120f, subTextPaint)
 
                       withContext(Dispatchers.Main) {
@@ -380,8 +383,9 @@ jobs:
                               .putString(MediaMetadataCompat.METADATA_KEY_TITLE, text)
                               .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, "Peugeot Mode")
                               .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, "Ambient Flow")
+                              // ★重要: アルバムアートとディスプレイアイコンの両方にセットして表示確率を上げる
                               .putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, bitmap)
-                              .putBitmap(MediaMetadataCompat.METADATA_KEY_DISPLAY_ICON, bitmap) // アイコン用にもセット
+                              .putBitmap(MediaMetadataCompat.METADATA_KEY_DISPLAY_ICON, bitmap)
                               .build())
                           
                           if (mediaSession.controller.playbackState.state != PlaybackStateCompat.STATE_PLAYING) {
@@ -392,7 +396,7 @@ jobs:
                           }
                           
                           val mgr = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-                          // Note: Escaped \$ to fix the build error
+                          // ★修正: 変数展開をエスケープしてビルドエラー回避
                           mgr.notify(NOTIFICATION_ID, buildNotification(bitmap, "Status: \$text"))
                       }
                   }
@@ -464,5 +468,5 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: AmbientFlow-Premium-APK
+          name: AmbientFlow-FinalFix-APK
           path: app/build/outputs/apk/debug/app-debug.apk
