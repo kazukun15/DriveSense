@@ -1,4 +1,4 @@
-name: Build Ambient Flow (Ultimate Fix)
+name: Build Ambient Flow (Ultimate)
 
 on:
   workflow_dispatch:
@@ -69,6 +69,7 @@ jobs:
           android.enableJetifier=true
           kotlin.code.style=official
           android.nonTransitiveRClass=true
+          android.suppressUnsupportedCompileSdk=35
           EOF
 
           # --- 4. App Structure ---
@@ -93,8 +94,8 @@ jobs:
                   applicationId = "$PKG"
                   minSdk = 26
                   targetSdk = 35
-                  versionCode = 14
-                  versionName = "7.0.Ultimate"
+                  versionCode = 17
+                  versionName = "10.0.Ultimate"
               }
               buildTypes {
                   release { isMinifyEnabled = false }
@@ -152,7 +153,7 @@ jobs:
           # --- 7. Manifest ---
           cat > app/src/main/AndroidManifest.xml <<EOF
           <?xml version="1.0" encoding="utf-8"?>
-          <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="$PKG">
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
               <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
               <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
               <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
@@ -192,7 +193,7 @@ jobs:
           </manifest>
           EOF
 
-          # --- 8. Kotlin: MainActivity (Robust Permission Logic) ---
+          # --- 8. Kotlin: MainActivity ---
           cat > app/src/main/java/jp/kazukun/ambient/MainActivity.kt <<EOF
           package $PKG
           import android.Manifest
@@ -233,7 +234,6 @@ jobs:
 
               override fun onRequestPermissionsResult(rq: Int, p: Array<out String>, gr: IntArray) {
                   super.onRequestPermissionsResult(rq, p, gr)
-                  // 許可・拒否に関わらずサービスを起動する（拒否なら制限モードで動く）
                   startServiceSafe()
               }
               
@@ -246,7 +246,7 @@ jobs:
           }
           EOF
 
-          # --- 9. Kotlin: Service (Crash Proof & Instant Load) ---
+          # --- 9. Kotlin: Service (WakeLock Added & No Buttons) ---
           cat > app/src/main/java/jp/kazukun/ambient/AmbientMediaService.kt <<EOF
           package $PKG
 
@@ -260,6 +260,7 @@ jobs:
           import android.location.*
           import android.os.Build
           import android.os.Bundle
+          import android.os.PowerManager
           import android.support.v4.media.MediaBrowserCompat
           import android.support.v4.media.MediaMetadataCompat
           import android.support.v4.media.session.MediaSessionCompat
@@ -273,6 +274,7 @@ jobs:
           class AmbientMediaService : MediaBrowserServiceCompat(), LocationListener {
               private lateinit var mediaSession: MediaSessionCompat
               private var locationManager: LocationManager? = null
+              private var wakeLock: PowerManager.WakeLock? = null
               private val scope = CoroutineScope(Dispatchers.Default + Job())
               
               private val BITMAP_SIZE = 1024
@@ -295,13 +297,18 @@ jobs:
                   super.onCreate()
                   createNotificationChannel()
                   initPaints()
+                  
+                  // WakeLockの取得（アプリを眠らせない）
+                  val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+                  wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "AmbientFlow::Wakelock")
+                  wakeLock?.acquire(10*60*60*1000L /* 10 hours */)
 
-                  // 1. Session Tokenを最優先で設定
                   mediaSession = MediaSessionCompat(this, "AmbientSession")
                   sessionToken = mediaSession.sessionToken
                   
                   mediaSession.setCallback(object : MediaSessionCompat.Callback() {
                       override fun onPlay() { updateState("STARTING", stayShader) }
+                      // ★修正完了: 主語を明記
                       override fun onPrepare() { mediaSession.isActive = true }
                       override fun onStop() { 
                           stopForeground(STOP_FOREGROUND_REMOVE)
@@ -310,19 +317,17 @@ jobs:
                   })
                   mediaSession.isActive = true
 
-                  // 2. 即座に「再生中」にする（ローディング回避）
+                  // 初期状態設定：ボタンなし
                   setPlaybackState(PlaybackStateCompat.STATE_PLAYING)
 
-                  // 3. 初期画面を即座に描画
                   updateState("READY", stayShader)
-                  
-                  // 4. 位置情報のセットアップ
                   setupLocation()
               }
               
               private fun setPlaybackState(state: Int) {
+                  // アクション 0L = ボタンなし
                   val builder = PlaybackStateCompat.Builder()
-                      .setActions(PlaybackStateCompat.ACTION_PLAY or PlaybackStateCompat.ACTION_PAUSE or PlaybackStateCompat.ACTION_STOP)
+                      .setActions(0L)
                       .setState(state, 0L, 1.0f)
                   mediaSession.setPlaybackState(builder.build())
               }
@@ -344,7 +349,6 @@ jobs:
                   
                   bgPaint.isAntiAlias = true
 
-                  // シェーダー定義
                   stayShader = LinearGradient(0f, 0f, 0f, BITMAP_SIZE.toFloat(),
                       Color.parseColor("#050510"), Color.parseColor("#1A237E"), Shader.TileMode.CLAMP)
                   flowShader = LinearGradient(0f, 0f, 0f, BITMAP_SIZE.toFloat(),
@@ -358,26 +362,21 @@ jobs:
               override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
                   val hasLoc = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
                   
-                  // Android 14+ クラッシュ回避ロジック
                   try {
                       if (Build.VERSION.SDK_INT >= 34) {
                           if (hasLoc) {
                               startForeground(NOTIFICATION_ID, buildNotification("Active"), 
                                   ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION or ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
                           } else {
-                              // 許可がない場合はメディアのみで起動し、ユーザーに通知
-                              startForeground(NOTIFICATION_ID, buildNotification("Location Permission Needed"), 
+                              startForeground(NOTIFICATION_ID, buildNotification("Loc Perm Needed"), 
                                   ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
                               updateState("PERM NEEDED", alertShader)
                           }
                       } else {
                           startForeground(NOTIFICATION_ID, buildNotification("Active"))
                       }
-                  } catch (e: Exception) {
-                      // 無視して続行
-                  }
+                  } catch (e: Exception) { }
                   
-                  // 再生状態を強制更新
                   setPlaybackState(PlaybackStateCompat.STATE_PLAYING)
                   if (hasLoc) updateState("Ambient", stayShader)
                   
@@ -385,12 +384,10 @@ jobs:
               }
 
               override fun onGetRoot(pkg: String, uid: Int, root: Bundle?): BrowserRoot {
-                  // 即座にルートを返す
                   return BrowserRoot("ROOT", null)
               }
 
               override fun onLoadChildren(id: String, res: Result<MutableList<MediaBrowserCompat.MediaItem>>) {
-                  // 即座に空リストを返す（タイムアウト防止）
                   res.sendResult(mutableListOf())
               }
 
@@ -418,7 +415,6 @@ jobs:
                               
                               mediaSession.setMetadata(metadata)
                               
-                              // 文字列連結を使用してYAMLエラーを回避
                               val notifText = "Status: " + text
                               val mgr = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
                               mgr.notify(NOTIFICATION_ID, buildNotification(notifText))
@@ -471,6 +467,9 @@ jobs:
 
               override fun onDestroy() {
                   super.onDestroy()
+                  try {
+                    wakeLock?.release()
+                  } catch (e: Exception) {}
                   locationManager?.removeUpdates(this)
                   mediaSession.release()
               }
