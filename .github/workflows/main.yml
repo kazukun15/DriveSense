@@ -1,4 +1,4 @@
-Name: Build Ambient Flow (Simple & Stable)
+name: Build Ambient Flow (Fix)
 
 on:
   workflow_dispatch:
@@ -20,23 +20,21 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install Gradle 8.9
+      - name: Install Gradle 8.6
         shell: bash
         run: |
-          set -euxo pipefail
-          wget -q https://services.gradle.org/distributions/gradle-8.9-bin.zip
-          unzip -q gradle-8.9-bin.zip
-          echo "$PWD/gradle-8.9/bin" >> $GITHUB_PATH
+          wget -q https://services.gradle.org/distributions/gradle-8.6-bin.zip
+          unzip -q gradle-8.6-bin.zip
+          echo "$PWD/gradle-8.6/bin" >> $GITHUB_PATH
 
       - name: Generate Project Files
         shell: bash
         run: |
-          set -euxo pipefail
-
+          set -e
           PKG="jp.kazukun.ambient"
           APP_LABEL="Ambient Flow"
 
-          # 1. Settings
+          # --- 1. Settings ---
           cat > settings.gradle.kts <<EOF
           pluginManagement {
               repositories {
@@ -56,15 +54,15 @@ jobs:
           include(":app")
           EOF
 
-          # 2. Build Gradle (Project)
+          # --- 2. Build Gradle (Project) ---
           cat > build.gradle.kts <<EOF
           plugins {
-              id("com.android.application") version "8.5.2" apply false
-              id("org.jetbrains.kotlin.android") version "2.0.20" apply false
+              id("com.android.application") version "8.3.0" apply false
+              id("org.jetbrains.kotlin.android") version "1.9.23" apply false
           }
           EOF
 
-          # 3. Gradle Properties
+          # --- 3. Gradle Properties ---
           cat > gradle.properties <<EOF
           org.gradle.jvmargs=-Xmx4g -XX:+UseParallelGC
           android.useAndroidX=true
@@ -73,9 +71,14 @@ jobs:
           android.nonTransitiveRClass=true
           EOF
 
-          # 4. App Module
-          mkdir -p app/src/main/{java/jp/kazukun/ambient,res/xml,res/values,res/drawable,res/mipmap-anydpi-v26}
+          # --- 4. App Structure ---
+          mkdir -p app/src/main/java/jp/kazukun/ambient
+          mkdir -p app/src/main/res/xml
+          mkdir -p app/src/main/res/values
+          mkdir -p app/src/main/res/drawable
+          mkdir -p app/src/main/res/mipmap-anydpi-v26
 
+          # --- 5. App Gradle ---
           cat > app/build.gradle.kts <<EOF
           plugins {
               id("com.android.application")
@@ -84,14 +87,14 @@ jobs:
 
           android {
               namespace = "$PKG"
-              compileSdk = 35
+              compileSdk = 34
 
               defaultConfig {
                   applicationId = "$PKG"
                   minSdk = 26
-                  targetSdk = 35
-                  versionCode = 5
-                  versionName = "3.1.Simple"
+                  targetSdk = 34
+                  versionCode = 6
+                  versionName = "3.2.Stable"
               }
               buildTypes {
                   release { isMinifyEnabled = false }
@@ -104,20 +107,19 @@ jobs:
           }
 
           dependencies {
-              implementation("androidx.core:core-ktx:1.13.1")
-              implementation("androidx.appcompat:appcompat:1.7.0")
+              implementation("androidx.core:core-ktx:1.12.0")
+              implementation("androidx.appcompat:appcompat:1.6.1")
               implementation("androidx.media:media:1.7.0")
-              implementation("com.google.android.gms:play-services-location:21.3.0")
-              implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
+              implementation("com.google.android.gms:play-services-location:21.0.1")
+              implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
           }
           EOF
 
-          # --- Resources ---
+          # --- 6. Resources ---
           cat > app/src/main/res/values/strings.xml <<EOF
           <resources>
               <string name="app_name">$APP_LABEL</string>
-              <string name="notification_channel_name">Ambient Flow Status</string>
-              <string name="notification_channel_desc">Displaying current flow state</string>
+              <string name="status_channel">Ambient Status</string>
           </resources>
           EOF
 
@@ -130,16 +132,12 @@ jobs:
 
           # Icons
           cat > app/src/main/res/drawable/ic_launcher_background.xml <<EOF
-          <vector xmlns:android="http://schemas.android.com/apk/res/android"
-              android:width="108dp" android:height="108dp"
-              android:viewportWidth="108" android:viewportHeight="108">
+          <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
               <path android:fillColor="#263238" android:pathData="M0,0h108v108h-108z"/>
           </vector>
           EOF
           cat > app/src/main/res/drawable/ic_launcher_foreground.xml <<EOF
-          <vector xmlns:android="http://schemas.android.com/apk/res/android"
-              android:width="108dp" android:height="108dp"
-              android:viewportWidth="108" android:viewportHeight="108">
+          <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
               <path android:fillColor="#80CBC4" android:pathData="M54,26 A28,28 0 1,0 54,82 A28,28 0 1,0 54,26 M54,40 A14,14 0 1,1 54,68 A14,14 0 1,1 54,40"/>
           </vector>
           EOF
@@ -151,7 +149,7 @@ jobs:
           EOF
           cp app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml
 
-          # Manifest
+          # --- 7. Manifest ---
           cat > app/src/main/AndroidManifest.xml <<EOF
           <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="$PKG">
@@ -193,9 +191,7 @@ jobs:
           </manifest>
           EOF
 
-          # --- Kotlin Code ---
-          
-          # 1. MainActivity
+          # --- 8. Kotlin: MainActivity ---
           cat > app/src/main/java/jp/kazukun/ambient/MainActivity.kt <<EOF
           package $PKG
           import android.Manifest
@@ -230,7 +226,7 @@ jobs:
           }
           EOF
 
-          # 2. AmbientMediaService (Simple Text Version)
+          # --- 9. Kotlin: Service (Lightweight Version) ---
           cat > app/src/main/java/jp/kazukun/ambient/AmbientMediaService.kt <<EOF
           package $PKG
 
@@ -257,9 +253,7 @@ jobs:
               private lateinit var mediaSession: MediaSessionCompat
               private var locationManager: LocationManager? = null
               private val scope = CoroutineScope(Dispatchers.Default + Job())
-              private var isRunning = false
               
-              // 描画用のキャンバス設定
               private val BITMAP_SIZE = 512
               private val bitmap = Bitmap.createBitmap(BITMAP_SIZE, BITMAP_SIZE, Bitmap.Config.ARGB_8888)
               private val canvas = Canvas(bitmap)
@@ -273,7 +267,6 @@ jobs:
 
               private val CHANNEL_ID = "ambient_status_channel"
               private val NOTIFICATION_ID = 777
-              
               private var lastSpeed = -1f
 
               override fun onCreate() {
@@ -282,7 +275,7 @@ jobs:
 
                   mediaSession = MediaSessionCompat(this, "AmbientSession").apply {
                       setCallback(object : MediaSessionCompat.Callback() {
-                          override fun onPlay() { updateState("STARTING...", Color.DKGRAY) }
+                          override fun onPlay() { updateState("STARTING", Color.DKGRAY) }
                       })
                       isActive = true
                       setPlaybackState(PlaybackStateCompat.Builder()
@@ -293,10 +286,7 @@ jobs:
                   sessionToken = mediaSession.sessionToken
                   
                   setupLocation()
-                  
-                  // 初期状態を表示
-                  updateState("STAY", Color.parseColor("#1A237E")) // 深い青
-                  isRunning = true
+                  updateState("READY", Color.parseColor("#1A237E"))
               }
 
               override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -304,26 +294,20 @@ jobs:
                   return START_STICKY
               }
 
-              // シンプルな状態更新ロジック
               private fun updateState(text: String, bgColor: Int) {
                   scope.launch {
-                      // 1. 背景を塗る
                       canvas.drawColor(bgColor)
-                      
-                      // 2. 文字を中心に書く
                       val xPos = (canvas.width / 2).toFloat()
                       val yPos = (canvas.height / 2 - (paint.descent() + paint.ascent()) / 2)
                       canvas.drawText(text, xPos, yPos, paint)
 
-                      // 3. Android Autoに送信 (メインスレッドで)
                       withContext(Dispatchers.Main) {
                           mediaSession.setMetadata(MediaMetadataCompat.Builder()
-                              .putString(MediaMetadataCompat.METADATA_KEY_TITLE, text) // 曲名として状態を表示
+                              .putString(MediaMetadataCompat.METADATA_KEY_TITLE, text)
                               .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, "Ambient Mode")
                               .putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, bitmap)
                               .build())
-                              
-                          // 通知も更新（頻度は低いのでOK）
+                          
                           val mgr = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
                           mgr.notify(NOTIFICATION_ID, buildNotification(bitmap, text))
                       }
@@ -332,16 +316,14 @@ jobs:
 
               override fun onLocationChanged(location: Location) {
                   val speedKmh = location.speed * 3.6f
-                  
-                  // 速度が大きく変わった時だけ更新する（負荷軽減）
-                  if (Math.abs(speedKmh - lastSpeed) > 3.0) {
+                  if (Math.abs(speedKmh - lastSpeed) > 5.0) {
                       lastSpeed = speedKmh
-                      if (speedKmh < 3) {
-                          updateState("STAY", Color.parseColor("#283593")) // 停止中: 藍色
-                      } else if (speedKmh < 40) {
-                          updateState("FLOW", Color.parseColor("#00695C")) // 走行中: ティール
+                      if (speedKmh < 5) {
+                          updateState("STAY", Color.parseColor("#283593"))
+                      } else if (speedKmh < 50) {
+                          updateState("FLOW", Color.parseColor("#00695C"))
                       } else {
-                          updateState("DRIVE", Color.parseColor("#C62828")) // 高速: 赤茶
+                          updateState("DRIVE", Color.parseColor("#C62828"))
                       }
                   }
               }
@@ -374,14 +356,12 @@ jobs:
                   if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
                       locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
                       try {
-                          // 更新頻度も落とす（2秒ごと）
-                          locationManager?.requestLocationUpdates(LocationManager.GPS_PROVIDER, 2000, 2f, this)
+                          locationManager?.requestLocationUpdates(LocationManager.GPS_PROVIDER, 3000, 5f, this)
                       } catch (e: Exception) { e.printStackTrace() }
                   }
               }
 
               override fun onDestroy() {
-                  isRunning = false
                   locationManager?.removeUpdates(this)
                   mediaSession.isActive = false
                   mediaSession.release()
@@ -399,11 +379,11 @@ jobs:
       - name: Build APK
         shell: bash
         run: |
-          set -euxo pipefail
+          set -e
           gradle assembleDebug --no-daemon
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: AmbientFlow-Simple-APK
+          name: AmbientFlow-Stable-APK
           path: app/build/outputs/apk/debug/app-debug.apk
