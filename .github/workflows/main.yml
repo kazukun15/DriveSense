@@ -1,4 +1,4 @@
-name: Build Ambient Flow (Perfect Mix)
+name: Build Ambient Flow (Build Fix)
 
 on:
   workflow_dispatch:
@@ -92,8 +92,8 @@ jobs:
                   applicationId = "$PKG"
                   minSdk = 26
                   targetSdk = 35
-                  versionCode = 15
-                  versionName = "8.0.PerfectMix"
+                  versionCode = 16
+                  versionName = "8.1.BuildFix"
               }
               buildTypes { release { isMinifyEnabled = false } }
               compileOptions {
@@ -146,10 +146,10 @@ jobs:
           EOF
           cp app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml
 
-          # 7. Manifest
+          # 7. Manifest (Corrected: Removed package attribute to avoid warning)
           cat > app/src/main/AndroidManifest.xml <<EOF
           <?xml version="1.0" encoding="utf-8"?>
-          <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="$PKG">
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
               <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
               <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
               <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
@@ -203,7 +203,7 @@ jobs:
           }
           EOF
 
-          # 9. Service (Phantom Player Logic)
+          # 9. Service (Build Fix: Added imports)
           cat > app/src/main/java/jp/kazukun/ambient/AmbientMediaService.kt <<EOF
           package $PKG
 
@@ -214,6 +214,7 @@ jobs:
           import android.content.pm.PackageManager
           import android.graphics.*
           import android.location.*
+          import android.os.Build    // ★これが抜けていたので追加しました！
           import android.os.Bundle
           import android.support.v4.media.*
           import android.support.v4.media.session.*
@@ -261,8 +262,7 @@ jobs:
                       })
                       isActive = true
                       
-                      // ★ここが最重要：Audio Focusを取らずに「再生中」と宣言する
-                      // これにより画面はアクティブになるが、他アプリの音を消さない可能性が高まる
+                      // Audio Focusを取らずに「再生中」と宣言する
                       setPlaybackState(PlaybackStateCompat.Builder()
                           .setActions(PlaybackStateCompat.ACTION_PLAY or PlaybackStateCompat.ACTION_PAUSE)
                           .setState(PlaybackStateCompat.STATE_PLAYING, 0L, 1.0f)
@@ -291,7 +291,7 @@ jobs:
                       canvas.drawText(text, (BITMAP_SIZE/2).toFloat(), (BITMAP_SIZE/2).toFloat() + 35f, textPaint)
 
                       withContext(Dispatchers.Main) {
-                          // ★メタデータをセットして全画面表示を誘発
+                          // メタデータをセットして全画面表示を誘発
                           mediaSession.setMetadata(MediaMetadataCompat.Builder()
                               .putString(MediaMetadataCompat.METADATA_KEY_TITLE, text)
                               .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, "Visual Mode")
@@ -335,5 +335,5 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: AmbientFlow-PerfectMix-APK
+          name: AmbientFlow-BuildFix-APK
           path: app/build/outputs/apk/debug/app-debug.apk
