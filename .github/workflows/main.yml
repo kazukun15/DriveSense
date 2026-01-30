@@ -1,4 +1,4 @@
-name: Build Ambient Flow (Luxury)
+name: Build Ambient Flow (Android 16 Ready)
 
 on:
   workflow_dispatch:
@@ -87,14 +87,15 @@ jobs:
 
           android {
               namespace = "$PKG"
-              compileSdk = 34
+              // ★最新基準: Android 15 (API 35) をターゲットにする
+              compileSdk = 35
 
               defaultConfig {
                   applicationId = "$PKG"
                   minSdk = 26
-                  targetSdk = 34
-                  versionCode = 8
-                  versionName = "3.4.Luxury"
+                  targetSdk = 35
+                  versionCode = 10
+                  versionName = "4.0.Android16Ready"
               }
               buildTypes {
                   release { isMinifyEnabled = false }
@@ -160,6 +161,7 @@ jobs:
               <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
               <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
               <uses-permission android:name="android.permission.INTERNET" />
+              <uses-permission android:name="android.permission.WAKE_LOCK" />
 
               <application
                   android:label="$APP_LABEL"
@@ -213,20 +215,25 @@ jobs:
                   if (perms.any { ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED }) {
                       ActivityCompat.requestPermissions(this, perms.toTypedArray(), 99)
                   } else {
-                      startService()
+                      startServiceSafe()
                   }
               }
               override fun onRequestPermissionsResult(rq: Int, p: Array<out String>, gr: IntArray) {
                   super.onRequestPermissionsResult(rq, p, gr)
-                  if (rq == 99 && gr.isNotEmpty() && gr[0] == PackageManager.PERMISSION_GRANTED) startService()
+                  if (rq == 99 && gr.isNotEmpty() && gr[0] == PackageManager.PERMISSION_GRANTED) {
+                      startServiceSafe()
+                  }
               }
-              private fun startService() {
-                  ContextCompat.startForegroundService(this, Intent(this, AmbientMediaService::class.java))
+              private fun startServiceSafe() {
+                  try {
+                      val intent = Intent(this, AmbientMediaService::class.java)
+                      ContextCompat.startForegroundService(this, intent)
+                  } catch (e: Exception) { e.printStackTrace() }
               }
           }
           EOF
 
-          # --- 9. Kotlin: Service (Luxury & Stable Version) ---
+          # --- 9. Kotlin: Service (Android 16 Ready) ---
           cat > app/src/main/java/jp/kazukun/ambient/AmbientMediaService.kt <<EOF
           package $PKG
 
@@ -235,6 +242,7 @@ jobs:
           import android.content.Context
           import android.content.Intent
           import android.content.pm.PackageManager
+          import android.content.pm.ServiceInfo
           import android.graphics.*
           import android.location.*
           import android.os.Build
@@ -258,72 +266,83 @@ jobs:
               private val bitmap = Bitmap.createBitmap(BITMAP_SIZE, BITMAP_SIZE, Bitmap.Config.ARGB_8888)
               private val canvas = Canvas(bitmap)
               
-              // ★高級感のあるフォント設定 (Serif)
+              // Font & Paint (Peugeot Style)
               private val textPaint = Paint().apply {
                   isAntiAlias = true
                   textAlign = Paint.Align.CENTER
-                  color = Color.parseColor("#E0E0E0") // 完全な白ではなく、少しグレーがかった上品な白
+                  color = Color.parseColor("#E0E0E0")
                   textSize = 85f
-                  // SERIF指定で高級感を演出
                   typeface = Typeface.create(Typeface.SERIF, Typeface.NORMAL)
-                  // 柔らかい影をつけて浮遊感を出す
                   setShadowLayer(15f, 0f, 0f, Color.parseColor("#80000000"))
               }
-              
               private val bgPaint = Paint().apply { isAntiAlias = true }
 
-              // ★落ち着いたイルミネーションカラー
-              // STAY: ミッドナイト・パープル (静寂、夜のラウンジ)
+              // Gradient Shaders
               private val stayShader = LinearGradient(0f, 0f, 0f, BITMAP_SIZE.toFloat(),
                   Color.parseColor("#0F0c29"), Color.parseColor("#302b63"), Shader.TileMode.CLAMP)
-                  
-              // FLOW: ディープ・オーシャン (深い海、知性)
               private val flowShader = LinearGradient(0f, 0f, 0f, BITMAP_SIZE.toFloat(),
                   Color.parseColor("#000046"), Color.parseColor("#1CB5E0"), Shader.TileMode.CLAMP)
-
-              // DRIVE: ウォーム・アンバー (温かみ、落ち着いた情熱)
               private val driveShader = LinearGradient(0f, 0f, 0f, BITMAP_SIZE.toFloat(),
                   Color.parseColor("#3E2723"), Color.parseColor("#FF6F00"), Shader.TileMode.CLAMP)
+              private val alertShader = LinearGradient(0f, 0f, 0f, BITMAP_SIZE.toFloat(),
+                  Color.parseColor("#212121"), Color.parseColor("#424242"), Shader.TileMode.CLAMP)
 
               private val CHANNEL_ID = "ambient_status_channel"
               private val NOTIFICATION_ID = 777
               private var lastSpeed = -1f
+              private var hasPermission = false
 
               override fun onCreate() {
                   super.onCreate()
                   createNotificationChannel()
 
-                  // ★安定化: セッションを即座に有効化
                   mediaSession = MediaSessionCompat(this, "AmbientSession").apply {
                       setCallback(object : MediaSessionCompat.Callback() {
                           override fun onPlay() { updateState("STARTING", stayShader) }
                           override fun onPrepare() { isActive = true }
+                          override fun onStop() { stopSelf() } // 明示的に停止
                       })
                       isActive = true
-                      setSessionToken(sessionToken) // 重要
+                      setSessionToken(sessionToken)
                       setPlaybackState(PlaybackStateCompat.Builder()
-                          .setActions(PlaybackStateCompat.ACTION_PLAY or PlaybackStateCompat.ACTION_PAUSE)
+                          .setActions(PlaybackStateCompat.ACTION_PLAY or PlaybackStateCompat.ACTION_PAUSE or PlaybackStateCompat.ACTION_STOP)
                           .setState(PlaybackStateCompat.STATE_PLAYING, 0L, 1.0f)
                           .build())
                   }
-                  sessionToken = mediaSession.sessionToken
                   
-                  setupLocation()
-                  updateState("READY", stayShader)
+                  hasPermission = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                  
+                  if (hasPermission) {
+                      setupLocation()
+                      updateState("READY", stayShader)
+                  } else {
+                      updateState("OPEN APP", alertShader)
+                  }
               }
 
               override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-                  // ★安定化: サービス開始と同時に通知を出す
-                  startForeground(NOTIFICATION_ID, buildNotification(bitmap, "Ready"))
+                  try {
+                      if (Build.VERSION.SDK_INT >= 34) {
+                          if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+                              startForeground(NOTIFICATION_ID, buildNotification(bitmap, "Active"), 
+                                  ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION or ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
+                          } else {
+                              startForeground(NOTIFICATION_ID, buildNotification(bitmap, "Check Phone"), 
+                                  ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
+                          }
+                      } else {
+                          startForeground(NOTIFICATION_ID, buildNotification(bitmap, "Active"))
+                      }
+                  } catch (e: Exception) {
+                      try { startForeground(NOTIFICATION_ID, buildNotification(bitmap, "Recovering")) } catch (e2: Exception) {}
+                  }
                   return START_STICKY
               }
 
-              // ★安定化: どんな接続要求も拒否しない
               override fun onGetRoot(pkg: String, uid: Int, root: Bundle?): BrowserRoot {
                   return BrowserRoot("ROOT", null)
               }
 
-              // ★安定化: 空のリストでも即座に結果を返す（タイムアウト防止）
               override fun onLoadChildren(id: String, res: Result<MutableList<MediaBrowserCompat.MediaItem>>) {
                   res.sendResult(mutableListOf())
               }
@@ -338,17 +357,17 @@ jobs:
                       canvas.drawText(text, xPos, yPos, textPaint)
 
                       withContext(Dispatchers.Main) {
-                          // メタデータを更新
+                          if (!mediaSession.isActive) return@withContext
+                          
                           mediaSession.setMetadata(MediaMetadataCompat.Builder()
                               .putString(MediaMetadataCompat.METADATA_KEY_TITLE, text)
                               .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, "Ambient Mode")
                               .putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, bitmap)
                               .build())
                           
-                          // 再生状態を再確認 (Android Autoに生存を伝える)
                           if (mediaSession.controller.playbackState.state != PlaybackStateCompat.STATE_PLAYING) {
                                mediaSession.setPlaybackState(PlaybackStateCompat.Builder()
-                                  .setActions(PlaybackStateCompat.ACTION_PLAY or PlaybackStateCompat.ACTION_PAUSE)
+                                  .setActions(PlaybackStateCompat.ACTION_PLAY or PlaybackStateCompat.ACTION_PAUSE or PlaybackStateCompat.ACTION_STOP)
                                   .setState(PlaybackStateCompat.STATE_PLAYING, 0L, 1.0f)
                                   .build())
                           }
@@ -361,7 +380,7 @@ jobs:
 
               override fun onLocationChanged(location: Location) {
                   val speedKmh = location.speed * 3.6f
-                  if (Math.abs(speedKmh - lastSpeed) > 3.0) { // 感度を少し上げる
+                  if (Math.abs(speedKmh - lastSpeed) > 3.0) {
                       lastSpeed = speedKmh
                       if (speedKmh < 3) {
                           updateState("STAY", stayShader)
@@ -410,6 +429,8 @@ jobs:
                   locationManager?.removeUpdates(this)
                   mediaSession.isActive = false
                   mediaSession.release()
+                  // ★Android 16 準拠: サービス終了時のクリーンアップ
+                  stopForeground(STOP_FOREGROUND_REMOVE)
                   super.onDestroy()
               }
           }
@@ -424,5 +445,5 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: AmbientFlow-Luxury-APK
+          name: AmbientFlow-Android16-APK
           path: app/build/outputs/apk/debug/app-debug.apk
