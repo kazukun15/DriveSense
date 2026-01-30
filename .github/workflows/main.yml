@@ -1,4 +1,4 @@
-name: Build Ambient Flow (Fix)
+name: Build Ambient Flow (Peugeot Style)
 
 on:
   workflow_dispatch:
@@ -93,8 +93,8 @@ jobs:
                   applicationId = "$PKG"
                   minSdk = 26
                   targetSdk = 34
-                  versionCode = 6
-                  versionName = "3.2.Stable"
+                  versionCode = 7
+                  versionName = "3.3.PeugeotStyle"
               }
               buildTypes {
                   release { isMinifyEnabled = false }
@@ -130,15 +130,15 @@ jobs:
           </automotiveApp>
           EOF
 
-          # Icons
+          # Icons (Sophisticated Blue)
           cat > app/src/main/res/drawable/ic_launcher_background.xml <<EOF
           <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
-              <path android:fillColor="#263238" android:pathData="M0,0h108v108h-108z"/>
+              <path android:fillColor="#0D47A1" android:pathData="M0,0h108v108h-108z"/>
           </vector>
           EOF
           cat > app/src/main/res/drawable/ic_launcher_foreground.xml <<EOF
           <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
-              <path android:fillColor="#80CBC4" android:pathData="M54,26 A28,28 0 1,0 54,82 A28,28 0 1,0 54,26 M54,40 A14,14 0 1,1 54,68 A14,14 0 1,1 54,40"/>
+              <path android:fillColor="#FFFFFF" android:pathData="M54,26 A28,28 0 1,0 54,82 A28,28 0 1,0 54,26 M54,40 A14,14 0 1,1 54,68 A14,14 0 1,1 54,40"/>
           </vector>
           EOF
           cat > app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml <<EOF
@@ -226,7 +226,7 @@ jobs:
           }
           EOF
 
-          # --- 9. Kotlin: Service (Lightweight Version) ---
+          # --- 9. Kotlin: Service (Gradient UI Version) ---
           cat > app/src/main/java/jp/kazukun/ambient/AmbientMediaService.kt <<EOF
           package $PKG
 
@@ -257,13 +257,32 @@ jobs:
               private val BITMAP_SIZE = 512
               private val bitmap = Bitmap.createBitmap(BITMAP_SIZE, BITMAP_SIZE, Bitmap.Config.ARGB_8888)
               private val canvas = Canvas(bitmap)
-              private val paint = Paint().apply {
+              
+              // 文字描画用のPaint（影付きで視認性アップ）
+              private val textPaint = Paint().apply {
                   isAntiAlias = true
                   textAlign = Paint.Align.CENTER
                   color = Color.WHITE
-                  textSize = 80f
-                  typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                  textSize = 90f // 少し大きく
+                  typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD) // モダンなサンセリフ体
+                  setShadowLayer(12f, 0f, 0f, Color.BLACK) // 文字が浮き出るような影
               }
+              
+              // 背景描画用のPaint
+              private val bgPaint = Paint().apply { isAntiAlias = true }
+
+              // グラデーション定義 (左上から右下へ)
+              // STAY: 深い青 -> 鮮やかな青 (Peugeot Vertigo Blue風)
+              private val stayShader = LinearGradient(0f, 0f, BITMAP_SIZE.toFloat(), BITMAP_SIZE.toFloat(),
+                  Color.parseColor("#000051"), Color.parseColor("#1A237E"), Shader.TileMode.CLAMP)
+                  
+              // FLOW: 深いティール -> 明るいシアン (先進的なデジタル感)
+              private val flowShader = LinearGradient(0f, 0f, BITMAP_SIZE.toFloat(), BITMAP_SIZE.toFloat(),
+                  Color.parseColor("#004D40"), Color.parseColor("#00BFA5"), Shader.TileMode.CLAMP)
+
+              // DRIVE: 深い赤 -> 鮮やかなオレンジ赤 (Peugeot Elixir Red風)
+              private val driveShader = LinearGradient(0f, 0f, BITMAP_SIZE.toFloat(), BITMAP_SIZE.toFloat(),
+                  Color.parseColor("#B71C1C"), Color.parseColor("#FF5722"), Shader.TileMode.CLAMP)
 
               private val CHANNEL_ID = "ambient_status_channel"
               private val NOTIFICATION_ID = 777
@@ -275,7 +294,7 @@ jobs:
 
                   mediaSession = MediaSessionCompat(this, "AmbientSession").apply {
                       setCallback(object : MediaSessionCompat.Callback() {
-                          override fun onPlay() { updateState("STARTING", Color.DKGRAY) }
+                          override fun onPlay() { /* No-op */ }
                       })
                       isActive = true
                       setPlaybackState(PlaybackStateCompat.Builder()
@@ -286,7 +305,8 @@ jobs:
                   sessionToken = mediaSession.sessionToken
                   
                   setupLocation()
-                  updateState("READY", Color.parseColor("#1A237E"))
+                  // 初期表示
+                  updateState("READY", stayShader)
               }
 
               override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -294,12 +314,16 @@ jobs:
                   return START_STICKY
               }
 
-              private fun updateState(text: String, bgColor: Int) {
+              private fun updateState(text: String, shader: Shader) {
                   scope.launch {
-                      canvas.drawColor(bgColor)
+                      // 1. グラデーション背景を描画
+                      bgPaint.shader = shader
+                      canvas.drawRect(0f, 0f, BITMAP_SIZE.toFloat(), BITMAP_SIZE.toFloat(), bgPaint)
+                      
+                      // 2. 文字を描画（影付き）
                       val xPos = (canvas.width / 2).toFloat()
-                      val yPos = (canvas.height / 2 - (paint.descent() + paint.ascent()) / 2)
-                      canvas.drawText(text, xPos, yPos, paint)
+                      val yPos = (canvas.height / 2 - (textPaint.descent() + textPaint.ascent()) / 2)
+                      canvas.drawText(text, xPos, yPos, textPaint)
 
                       withContext(Dispatchers.Main) {
                           mediaSession.setMetadata(MediaMetadataCompat.Builder()
@@ -319,11 +343,11 @@ jobs:
                   if (Math.abs(speedKmh - lastSpeed) > 5.0) {
                       lastSpeed = speedKmh
                       if (speedKmh < 5) {
-                          updateState("STAY", Color.parseColor("#283593"))
+                          updateState("STAY", stayShader)
                       } else if (speedKmh < 50) {
-                          updateState("FLOW", Color.parseColor("#00695C"))
+                          updateState("FLOW", flowShader)
                       } else {
-                          updateState("DRIVE", Color.parseColor("#C62828"))
+                          updateState("DRIVE", driveShader)
                       }
                   }
               }
@@ -334,7 +358,7 @@ jobs:
 
                    return NotificationCompat.Builder(this, CHANNEL_ID)
                       .setContentTitle("Ambient Flow")
-                      .setContentText("Status: $text")
+                      .setContentText(text)
                       .setSmallIcon(R.drawable.ic_launcher_foreground)
                       .setLargeIcon(bmp)
                       .setContentIntent(pendingIntent)
@@ -385,5 +409,5 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: AmbientFlow-Stable-APK
+          name: AmbientFlow-Peugeot-APK
           path: app/build/outputs/apk/debug/app-debug.apk
