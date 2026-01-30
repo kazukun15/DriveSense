@@ -1,4 +1,4 @@
-name: Build Ambient Flow (Absolute Fix)
+name: Build Ambient Flow (Ultimate Fix)
 
 on:
   workflow_dispatch:
@@ -93,8 +93,8 @@ jobs:
                   applicationId = "$PKG"
                   minSdk = 26
                   targetSdk = 35
-                  versionCode = 13
-                  versionName = "6.0.Absolute"
+                  versionCode = 14
+                  versionName = "7.0.Ultimate"
               }
               buildTypes {
                   release { isMinifyEnabled = false }
@@ -130,7 +130,7 @@ jobs:
           </automotiveApp>
           EOF
 
-          # Icons (Simple & Reliable)
+          # Icons (Fixed)
           cat > app/src/main/res/drawable/ic_launcher_background.xml <<EOF
           <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
               <path android:fillColor="#1A237E" android:pathData="M0,0h108v108h-108z"/>
@@ -192,7 +192,7 @@ jobs:
           </manifest>
           EOF
 
-          # --- 8. Kotlin: MainActivity ---
+          # --- 8. Kotlin: MainActivity (Robust Permission Logic) ---
           cat > app/src/main/java/jp/kazukun/ambient/MainActivity.kt <<EOF
           package $PKG
           import android.Manifest
@@ -233,7 +233,7 @@ jobs:
 
               override fun onRequestPermissionsResult(rq: Int, p: Array<out String>, gr: IntArray) {
                   super.onRequestPermissionsResult(rq, p, gr)
-                  // 許可されてもされなくても、とりあえずサービスを叩き起こす
+                  // 許可・拒否に関わらずサービスを起動する（拒否なら制限モードで動く）
                   startServiceSafe()
               }
               
@@ -246,8 +246,7 @@ jobs:
           }
           EOF
 
-          # --- 9. Kotlin: Service (Absolute Reliability) ---
-          # ここでビルドエラーの原因となる「\$」を使わず、文字列連結で対応するパラダイムシフト
+          # --- 9. Kotlin: Service (Crash Proof & Instant Load) ---
           cat > app/src/main/java/jp/kazukun/ambient/AmbientMediaService.kt <<EOF
           package $PKG
 
@@ -283,10 +282,10 @@ jobs:
               private val subTextPaint = Paint()
               private val bgPaint = Paint()
 
-              // グラデーションキャッシュ
               private lateinit var stayShader: Shader
               private lateinit var flowShader: Shader
               private lateinit var driveShader: Shader
+              private lateinit var alertShader: Shader
 
               private val CHANNEL_ID = "ambient_status_channel"
               private val NOTIFICATION_ID = 777
@@ -297,9 +296,8 @@ jobs:
                   createNotificationChannel()
                   initPaints()
 
-                  // メディアセッションの初期化（最速で行う）
+                  // 1. Session Tokenを最優先で設定
                   mediaSession = MediaSessionCompat(this, "AmbientSession")
-                  mediaSession.isActive = true
                   sessionToken = mediaSession.sessionToken
                   
                   mediaSession.setCallback(object : MediaSessionCompat.Callback() {
@@ -310,14 +308,15 @@ jobs:
                           stopSelf() 
                       }
                   })
+                  mediaSession.isActive = true
 
-                  // ★重要: 初期状態を「再生中」に強制設定してローディングを消す
+                  // 2. 即座に「再生中」にする（ローディング回避）
                   setPlaybackState(PlaybackStateCompat.STATE_PLAYING)
 
-                  // 即座に初期画像を描画して送信
+                  // 3. 初期画面を即座に描画
                   updateState("READY", stayShader)
                   
-                  // 位置情報のセットアップ
+                  // 4. 位置情報のセットアップ
                   setupLocation()
               }
               
@@ -352,20 +351,24 @@ jobs:
                       Color.parseColor("#00251a"), Color.parseColor("#00695c"), Shader.TileMode.CLAMP)
                   driveShader = LinearGradient(0f, 0f, 0f, BITMAP_SIZE.toFloat(),
                       Color.parseColor("#3b0000"), Color.parseColor("#b71c1c"), Shader.TileMode.CLAMP)
+                  alertShader = LinearGradient(0f, 0f, 0f, BITMAP_SIZE.toFloat(),
+                      Color.parseColor("#212121"), Color.parseColor("#424242"), Shader.TileMode.CLAMP)
               }
 
               override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-                  // Android 14対策: 権限確認
                   val hasLoc = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
                   
+                  // Android 14+ クラッシュ回避ロジック
                   try {
                       if (Build.VERSION.SDK_INT >= 34) {
                           if (hasLoc) {
                               startForeground(NOTIFICATION_ID, buildNotification("Active"), 
                                   ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION or ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
                           } else {
-                              startForeground(NOTIFICATION_ID, buildNotification("No Location Permission"), 
+                              // 許可がない場合はメディアのみで起動し、ユーザーに通知
+                              startForeground(NOTIFICATION_ID, buildNotification("Location Permission Needed"), 
                                   ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
+                              updateState("PERM NEEDED", alertShader)
                           }
                       } else {
                           startForeground(NOTIFICATION_ID, buildNotification("Active"))
@@ -374,20 +377,20 @@ jobs:
                       // 無視して続行
                   }
                   
-                  // 念押しで再生状態を更新
+                  // 再生状態を強制更新
                   setPlaybackState(PlaybackStateCompat.STATE_PLAYING)
-                  updateState("Ambient", stayShader)
+                  if (hasLoc) updateState("Ambient", stayShader)
                   
                   return START_STICKY
               }
 
-              // ★即時応答: どんなリクエストも許可する
               override fun onGetRoot(pkg: String, uid: Int, root: Bundle?): BrowserRoot {
+                  // 即座にルートを返す
                   return BrowserRoot("ROOT", null)
               }
 
-              // ★即時応答: 空リストを即座に返す
               override fun onLoadChildren(id: String, res: Result<MutableList<MediaBrowserCompat.MediaItem>>) {
+                  // 即座に空リストを返す（タイムアウト防止）
                   res.sendResult(mutableListOf())
               }
 
@@ -415,7 +418,7 @@ jobs:
                               
                               mediaSession.setMetadata(metadata)
                               
-                              // ここで文字列連結を使う (ビルドエラー回避)
+                              // 文字列連結を使用してYAMLエラーを回避
                               val notifText = "Status: " + text
                               val mgr = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
                               mgr.notify(NOTIFICATION_ID, buildNotification(notifText))
@@ -487,5 +490,5 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: AmbientFlow-Absolute-APK
+          name: AmbientFlow-Ultimate-APK
           path: app/build/outputs/apk/debug/app-debug.apk
