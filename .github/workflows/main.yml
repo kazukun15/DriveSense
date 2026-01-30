@@ -1,4 +1,4 @@
-name: Build Ambient Flow (Ultimate)
+name: Build Ambient Flow (No Controls)
 
 on:
   workflow_dispatch:
@@ -69,7 +69,6 @@ jobs:
           android.enableJetifier=true
           kotlin.code.style=official
           android.nonTransitiveRClass=true
-          android.suppressUnsupportedCompileSdk=35
           EOF
 
           # --- 4. App Structure ---
@@ -94,8 +93,8 @@ jobs:
                   applicationId = "$PKG"
                   minSdk = 26
                   targetSdk = 35
-                  versionCode = 17
-                  versionName = "10.0.Ultimate"
+                  versionCode = 15
+                  versionName = "8.0.NoControls"
               }
               buildTypes {
                   release { isMinifyEnabled = false }
@@ -131,10 +130,10 @@ jobs:
           </automotiveApp>
           EOF
 
-          # Icons (Fixed)
+          # Icons
           cat > app/src/main/res/drawable/ic_launcher_background.xml <<EOF
           <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
-              <path android:fillColor="#1A237E" android:pathData="M0,0h108v108h-108z"/>
+              <path android:fillColor="#000000" android:pathData="M0,0h108v108h-108z"/>
           </vector>
           EOF
           cat > app/src/main/res/drawable/ic_launcher_foreground.xml <<EOF
@@ -153,7 +152,7 @@ jobs:
           # --- 7. Manifest ---
           cat > app/src/main/AndroidManifest.xml <<EOF
           <?xml version="1.0" encoding="utf-8"?>
-          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="$PKG">
               <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
               <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
               <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
@@ -208,27 +207,16 @@ jobs:
           class MainActivity : AppCompatActivity() {
               override fun onCreate(savedInstanceState: Bundle?) {
                   super.onCreate(savedInstanceState)
-                  checkAndStart()
+                  startServiceSafe()
+                  checkPermissions()
               }
               
-              private fun checkAndStart() {
+              private fun checkPermissions() {
                   val perms = mutableListOf(Manifest.permission.ACCESS_FINE_LOCATION)
-                  if (Build.VERSION.SDK_INT >= 33) {
-                      perms.add(Manifest.permission.POST_NOTIFICATIONS)
-                  }
+                  if (Build.VERSION.SDK_INT >= 33) perms.add(Manifest.permission.POST_NOTIFICATIONS)
                   
-                  var allGranted = true
-                  for (p in perms) {
-                      if (ContextCompat.checkSelfPermission(this, p) != PackageManager.PERMISSION_GRANTED) {
-                          allGranted = false
-                          break
-                      }
-                  }
-
-                  if (!allGranted) {
+                  if (perms.any { ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED }) {
                       ActivityCompat.requestPermissions(this, perms.toTypedArray(), 99)
-                  } else {
-                      startServiceSafe()
                   }
               }
 
@@ -246,7 +234,7 @@ jobs:
           }
           EOF
 
-          # --- 9. Kotlin: Service (WakeLock Added & No Buttons) ---
+          # --- 9. Kotlin: Service (No Buttons / Ambient Only) ---
           cat > app/src/main/java/jp/kazukun/ambient/AmbientMediaService.kt <<EOF
           package $PKG
 
@@ -260,8 +248,8 @@ jobs:
           import android.location.*
           import android.os.Build
           import android.os.Bundle
-          import android.os.PowerManager
           import android.support.v4.media.MediaBrowserCompat
+          import android.support.v4.media.MediaDescriptionCompat
           import android.support.v4.media.MediaMetadataCompat
           import android.support.v4.media.session.MediaSessionCompat
           import android.support.v4.media.session.PlaybackStateCompat
@@ -274,7 +262,6 @@ jobs:
           class AmbientMediaService : MediaBrowserServiceCompat(), LocationListener {
               private lateinit var mediaSession: MediaSessionCompat
               private var locationManager: LocationManager? = null
-              private var wakeLock: PowerManager.WakeLock? = null
               private val scope = CoroutineScope(Dispatchers.Default + Job())
               
               private val BITMAP_SIZE = 1024
@@ -287,7 +274,6 @@ jobs:
               private lateinit var stayShader: Shader
               private lateinit var flowShader: Shader
               private lateinit var driveShader: Shader
-              private lateinit var alertShader: Shader
 
               private val CHANNEL_ID = "ambient_status_channel"
               private val NOTIFICATION_ID = 777
@@ -297,38 +283,30 @@ jobs:
                   super.onCreate()
                   createNotificationChannel()
                   initPaints()
-                  
-                  // WakeLockの取得（アプリを眠らせない）
-                  val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
-                  wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "AmbientFlow::Wakelock")
-                  wakeLock?.acquire(10*60*60*1000L /* 10 hours */)
 
                   mediaSession = MediaSessionCompat(this, "AmbientSession")
+                  mediaSession.isActive = true
                   sessionToken = mediaSession.sessionToken
                   
                   mediaSession.setCallback(object : MediaSessionCompat.Callback() {
-                      override fun onPlay() { updateState("STARTING", stayShader) }
-                      // ★修正完了: 主語を明記
-                      override fun onPrepare() { mediaSession.isActive = true }
-                      override fun onStop() { 
-                          stopForeground(STOP_FOREGROUND_REMOVE)
-                          stopSelf() 
-                      }
+                      // コールバックは一応定義するが、ボタンがないので呼ばれない
+                      override fun onPlay() {}
+                      override fun onStop() { stopForeground(STOP_FOREGROUND_REMOVE); stopSelf() }
                   })
-                  mediaSession.isActive = true
 
-                  // 初期状態設定：ボタンなし
-                  setPlaybackState(PlaybackStateCompat.STATE_PLAYING)
+                  // ★重要変更: アクションを全てゼロにする（ボタンを消す）
+                  setAmbientPlaybackState()
 
                   updateState("READY", stayShader)
                   setupLocation()
               }
               
-              private fun setPlaybackState(state: Int) {
-                  // アクション 0L = ボタンなし
+              private fun setAmbientPlaybackState() {
+                  // Actionsを 0 にすることで、ボタンを無効化・非表示にする
+                  // Stateは PLAYING にしないとAndroid Autoがアプリを終了させてしまうため、再生中のフリをする
                   val builder = PlaybackStateCompat.Builder()
-                      .setActions(0L)
-                      .setState(state, 0L, 1.0f)
+                      .setActions(0) 
+                      .setState(PlaybackStateCompat.STATE_PLAYING, 0L, 1.0f)
                   mediaSession.setPlaybackState(builder.build())
               }
 
@@ -355,31 +333,23 @@ jobs:
                       Color.parseColor("#00251a"), Color.parseColor("#00695c"), Shader.TileMode.CLAMP)
                   driveShader = LinearGradient(0f, 0f, 0f, BITMAP_SIZE.toFloat(),
                       Color.parseColor("#3b0000"), Color.parseColor("#b71c1c"), Shader.TileMode.CLAMP)
-                  alertShader = LinearGradient(0f, 0f, 0f, BITMAP_SIZE.toFloat(),
-                      Color.parseColor("#212121"), Color.parseColor("#424242"), Shader.TileMode.CLAMP)
               }
 
               override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+                  // サービス起動
                   val hasLoc = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
-                  
                   try {
                       if (Build.VERSION.SDK_INT >= 34) {
-                          if (hasLoc) {
-                              startForeground(NOTIFICATION_ID, buildNotification("Active"), 
-                                  ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION or ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
-                          } else {
-                              startForeground(NOTIFICATION_ID, buildNotification("Loc Perm Needed"), 
-                                  ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
-                              updateState("PERM NEEDED", alertShader)
-                          }
+                          val type = if (hasLoc) ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION or ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+                                     else ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+                          startForeground(NOTIFICATION_ID, buildNotification("Active"), type)
                       } else {
                           startForeground(NOTIFICATION_ID, buildNotification("Active"))
                       }
                   } catch (e: Exception) { }
                   
-                  setPlaybackState(PlaybackStateCompat.STATE_PLAYING)
-                  if (hasLoc) updateState("Ambient", stayShader)
-                  
+                  setAmbientPlaybackState()
+                  updateState("Ambient", stayShader)
                   return START_STICKY
               }
 
@@ -387,8 +357,15 @@ jobs:
                   return BrowserRoot("ROOT", null)
               }
 
+              // ★ここが大事: 画面を出すためにダミー曲は返す（必須）
               override fun onLoadChildren(id: String, res: Result<MutableList<MediaBrowserCompat.MediaItem>>) {
-                  res.sendResult(mutableListOf())
+                  val mediaItems = mutableListOf<MediaBrowserCompat.MediaItem>()
+                  val desc = MediaDescriptionCompat.Builder()
+                      .setMediaId("ambient_main")
+                      .setTitle("Ambient Flow") // これが画面に出る可能性はあるが、ボタンは出ない
+                      .build()
+                  mediaItems.add(MediaBrowserCompat.MediaItem(desc, MediaBrowserCompat.MediaItem.FLAG_PLAYABLE))
+                  res.sendResult(mediaItems)
               }
 
               private fun updateState(text: String, shader: Shader) {
@@ -408,13 +385,13 @@ jobs:
                               
                               val metadata = MediaMetadataCompat.Builder()
                                   .putString(MediaMetadataCompat.METADATA_KEY_TITLE, text)
-                                  .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, "Ambient Flow")
+                                  .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, " ") // アーティスト名を空にしてスッキリさせる
                                   .putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, bitmap)
                                   .putBitmap(MediaMetadataCompat.METADATA_KEY_DISPLAY_ICON, bitmap)
                                   .build()
-                              
                               mediaSession.setMetadata(metadata)
                               
+                              // String concatenation to avoid build error
                               val notifText = "Status: " + text
                               val mgr = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
                               mgr.notify(NOTIFICATION_ID, buildNotification(notifText))
@@ -437,6 +414,7 @@ jobs:
                    val intent = Intent(this, MainActivity::class.java)
                    val pendingIntent = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE)
 
+                   // ★MediaStyleを使うが、addActionを一切しないことでボタンを消す
                    return NotificationCompat.Builder(this, CHANNEL_ID)
                       .setContentTitle("Ambient Flow")
                       .setContentText(text)
@@ -467,9 +445,6 @@ jobs:
 
               override fun onDestroy() {
                   super.onDestroy()
-                  try {
-                    wakeLock?.release()
-                  } catch (e: Exception) {}
                   locationManager?.removeUpdates(this)
                   mediaSession.release()
               }
@@ -489,5 +464,5 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: AmbientFlow-Ultimate-APK
+          name: AmbientFlow-NoControls-APK
           path: app/build/outputs/apk/debug/app-debug.apk
