@@ -1,4 +1,4 @@
-name: Build Ambient Flow (Complete Fix)
+name: Build Ambient Flow (Final Static)
 
 on:
   workflow_dispatch:
@@ -48,7 +48,7 @@ jobs:
           }
           EOF
 
-          # --- 3. Gradle Properties (Fix Warnings) ---
+          # --- 3. Gradle Properties ---
           cat > gradle.properties <<EOF
           org.gradle.jvmargs=-Xmx4g -XX:+UseParallelGC
           android.useAndroidX=true
@@ -64,7 +64,7 @@ jobs:
           mkdir -p app/src/main/res/drawable
           mkdir -p app/src/main/res/mipmap-anydpi-v26
 
-          # --- 5. App Gradle (Add Car Library) ---
+          # --- 5. App Gradle (Car Library Included) ---
           cat > app/build.gradle.kts <<EOF
           plugins { id("com.android.application"); id("org.jetbrains.kotlin.android") }
           android {
@@ -74,8 +74,8 @@ jobs:
                   applicationId = "jp.kazukun.ambient"
                   minSdk = 26
                   targetSdk = 35
-                  versionCode = 110
-                  versionName = "15.0.Complete"
+                  versionCode = 120
+                  versionName = "16.0.StaticFix"
               }
               buildTypes { release { isMinifyEnabled = false } }
               compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
@@ -99,7 +99,7 @@ jobs:
           <resources><string name="app_name">Ambient Flow</string></resources>
           EOF
           
-          # Car App Category (Navigation)
+          # Car App Category (Navigation is Key)
           cat > app/src/main/res/xml/automotive_app_desc.xml <<EOF
           <automotiveApp>
               <uses name="navigation"/>
@@ -118,10 +118,10 @@ jobs:
           EOF
           cp app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml
 
-          # --- 7. Manifest (Cleaned up) ---
+          # --- 7. Manifest ---
           cat > app/src/main/AndroidManifest.xml <<EOF
           <?xml version="1.0" encoding="utf-8"?>
-          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="jp.kazukun.ambient">
               <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
               <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
               <uses-permission android:name="android.permission.INTERNET" />
@@ -159,6 +159,7 @@ jobs:
           class MainActivity : AppCompatActivity() {
               override fun onCreate(savedInstanceState: Bundle?) {
                   super.onCreate(savedInstanceState)
+                  // ナビアプリは位置情報必須のためリクエスト
                   if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
                       ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.ACCESS_FINE_LOCATION), 99)
                   }
@@ -166,14 +167,14 @@ jobs:
           }
           EOF
 
-          # --- 9. Car App Service (Fixed Imports) ---
+          # --- 9. Car App Service (Correct Imports & Logic) ---
           cat > app/src/main/java/jp/kazukun/ambient/AmbientCarService.kt <<EOF
           package jp.kazukun.ambient
 
           import android.Manifest
           import android.content.pm.PackageManager
           import android.graphics.*
-          // ★修正: Surfaceクラスのインポートを追加
+          // ★修正: 必須インポート追加
           import android.view.Surface
           import androidx.car.app.CarAppService
           import androidx.car.app.CarContext
@@ -184,13 +185,12 @@ jobs:
           import androidx.car.app.model.*
           import androidx.car.app.navigation.model.NavigationTemplate
           import androidx.car.app.validation.HostValidator
-          
           import androidx.core.content.ContextCompat
           import androidx.lifecycle.DefaultLifecycleObserver
           import androidx.lifecycle.LifecycleOwner
-          import kotlin.math.*
 
           class AmbientCarService : CarAppService() {
+              // バリデーター設定（必須）
               override fun createHostValidator() = HostValidator.ALLOW_ALL_HOSTS_VALIDATOR
               override fun onCreateSession() = AmbientSession()
           }
@@ -203,15 +203,18 @@ jobs:
 
           class AmbientScreen(carContext: CarContext) : Screen(carContext), DefaultLifecycleObserver {
               private var surface: Surface? = null
-              private val paint = Paint()
+              private var width = 0
+              private var height = 0
+              
+              // 描画ツール
               private val textPaint = Paint()
               private val peugeotPaint = Paint()
               private val subPaint = Paint()
-              
-              private var width = 0
-              private var height = 0
-              private var isRunning = false
-              private var time = 0f
+              private val bgPaint = Paint()
+
+              // 色モード管理 (0:STAY, 1:FLOW, 2:DRIVE)
+              private var currentMode = 0
+              private val modeNames = listOf("STAY", "FLOW", "DRIVE")
 
               init {
                   lifecycle.addObserver(this)
@@ -225,13 +228,14 @@ jobs:
                       color = Color.WHITE
                       textSize = 60f
                       typeface = Typeface.create(Typeface.SERIF, Typeface.BOLD)
-                      setShadowLayer(25f, 0f, 0f, Color.BLACK)
+                      setShadowLayer(20f, 0f, 0f, Color.BLACK)
                   }
                   
+                  // Peugeot Logo (Platinum)
                   peugeotPaint.apply {
                       isAntiAlias = true
                       textAlign = Paint.Align.CENTER
-                      color = Color.parseColor("#E5E4E2") // Platinum
+                      color = Color.parseColor("#E5E4E2")
                       textSize = 80f
                       typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD_ITALIC)
                       setShadowLayer(20f, 0f, 0f, Color.parseColor("#60000000"))
@@ -245,14 +249,29 @@ jobs:
                       textSize = 40f
                       typeface = Typeface.DEFAULT
                   }
+                  bgPaint.isAntiAlias = true
               }
 
               override fun onGetTemplate(): Template {
-                  return NavigationTemplate.Builder()
-                      .setActionStrip(ActionStrip.Builder()
-                          .addAction(Action.Builder().setTitle("PEUGEOT").setOnClickListener { }.build())
-                          .build())
+                  // ★ボタン設定: 押すと色が切り替わる
+                  val action = Action.Builder()
+                      .setTitle("Change Color")
+                      .setOnClickListener { onModeChange() }
                       .build()
+
+                  val actionStrip = ActionStrip.Builder().addAction(action).build()
+
+                  // ナビゲーションテンプレート（地図エリアはCanvasで描画）
+                  return NavigationTemplate.Builder()
+                      .setActionStrip(actionStrip)
+                      .build()
+              }
+
+              // ボタンクリック時の処理
+              private fun onModeChange() {
+                  currentMode = (currentMode + 1) % 3
+                  drawFrame() // ★ここだけ描画（超軽量）
+                  invalidate() // テンプレート更新通知
               }
 
               private val surfaceCallback = object : SurfaceCallback {
@@ -260,53 +279,49 @@ jobs:
                       surface = surfaceContainer.surface
                       width = surfaceContainer.width
                       height = surfaceContainer.height
-                      isRunning = true
-                      drawLoop()
+                      // 画面準備完了時に1回だけ描画
+                      drawFrame()
                   }
                   override fun onSurfaceDestroyed(surfaceContainer: SurfaceContainer) {
                       surface = null
-                      isRunning = false
                   }
               }
 
-              private fun drawLoop() {
-                  Thread {
-                      while (isRunning) {
-                          val s = surface ?: break
-                          try {
-                              val canvas = s.lockCanvas(null)
-                              if (canvas != null) {
-                                  drawFrame(canvas)
-                                  s.unlockCanvasAndPost(canvas)
-                              }
-                          } catch (e: Exception) { 
-                              // ロック失敗時は無視
+              // 1フレーム描画関数（ループなし・安全設計）
+              private fun drawFrame() {
+                  val s = surface ?: return
+                  if (width == 0 || height == 0) return
+
+                  try {
+                      val canvas = s.lockCanvas(null) ?: return
+                      try {
+                          // 背景グラデーション選択
+                          val shader = when(currentMode) {
+                              0 -> LinearGradient(0f, 0f, 0f, height.toFloat(),
+                                      Color.parseColor("#050510"), Color.parseColor("#1A237E"), Shader.TileMode.CLAMP) // Blue (STAY)
+                              1 -> LinearGradient(0f, 0f, 0f, height.toFloat(),
+                                      Color.parseColor("#00251a"), Color.parseColor("#00695c"), Shader.TileMode.CLAMP) // Teal (FLOW)
+                              else -> LinearGradient(0f, 0f, 0f, height.toFloat(),
+                                      Color.parseColor("#210000"), Color.parseColor("#b71c1c"), Shader.TileMode.CLAMP) // Red (DRIVE)
                           }
-                          Thread.sleep(33) 
-                          time += 0.02f
+                          
+                          bgPaint.shader = shader
+                          canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), bgPaint)
+
+                          // 文字描画
+                          val cx = width / 2f
+                          val cy = height / 2f
+                          
+                          canvas.drawText("Ambient Flow", cx, cy - 100f, textPaint)
+                          canvas.drawText("PEUGEOT", cx, cy + 20f, peugeotPaint)
+                          canvas.drawText("Mode: " + modeNames[currentMode], cx, cy + 120f, subPaint)
+
+                      } finally {
+                          s.unlockCanvasAndPost(canvas)
                       }
-                  }.start()
-              }
-
-              private fun drawFrame(canvas: Canvas) {
-                  val r = (sin(time) * 20).toInt()
-                  val b = (cos(time) * 40).toInt()
-                  
-                  val startColor = Color.rgb(5 + abs(r), 5, 20 + abs(b))
-                  val endColor = Color.rgb(0, 40 + abs(r), 140 + abs(b))
-
-                  val gradient = LinearGradient(0f, 0f, 0f, height.toFloat(),
-                      startColor, endColor, Shader.TileMode.CLAMP)
-                  
-                  paint.shader = gradient
-                  canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paint)
-
-                  val cx = width / 2f
-                  val cy = height / 2f
-                  
-                  canvas.drawText("Ambient Flow", cx, cy - 100f, textPaint)
-                  canvas.drawText("PEUGEOT", cx, cy + 20f, peugeotPaint)
-                  canvas.drawText("i-Cockpit Mode", cx, cy + 120f, subPaint)
+                  } catch (e: Exception) {
+                      e.printStackTrace()
+                  }
               }
               
               override fun onCreate(owner: LifecycleOwner) {
@@ -324,5 +339,5 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: AmbientFlow-Complete-APK
+          name: AmbientFlow-FinalStatic-APK
           path: app/build/outputs/apk/debug/app-debug.apk
