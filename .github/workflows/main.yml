@@ -1,4 +1,4 @@
-name: Build Ambient Flow (8 Colors)
+name: Build Ambient Flow (Stable 8Colors)
 
 on:
   workflow_dispatch:
@@ -74,8 +74,8 @@ jobs:
                   applicationId = "jp.kazukun.ambient"
                   minSdk = 26
                   targetSdk = 35
-                  versionCode = 800
-                  versionName = "80.0.EightColors"
+                  versionCode = 900
+                  versionName = "90.0.Stable8Colors"
               }
               buildTypes { release { isMinifyEnabled = false } }
               compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
@@ -102,7 +102,6 @@ jobs:
           EOF
 
           # --- Icons ---
-          # 高級感のあるパレットアイコン
           cat > app/src/main/res/drawable/ic_palette_luxury.xml <<EOF
           <vector xmlns:android="http://schemas.android.com/apk/res/android"
               android:width="24dp"
@@ -135,6 +134,7 @@ jobs:
               <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
               <uses-permission android:name="android.permission.INTERNET" />
               <uses-permission android:name="android.permission.WAKE_LOCK" />
+              <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
               <application android:label="Ambient Flow" android:icon="@mipmap/ic_launcher" android:theme="@style/Theme.AppCompat.NoActionBar">
                   <meta-data android:name="com.google.android.gms.car.application" android:resource="@xml/automotive_app_desc" />
@@ -152,17 +152,39 @@ jobs:
           </manifest>
           EOF
 
-          # --- 8. MainActivity ---
+          # --- 8. MainActivity (Permissions Restored) ---
           cat > app/src/main/java/jp/kazukun/ambient/MainActivity.kt <<EOF
           package jp.kazukun.ambient
+          import android.Manifest
           import android.content.Intent
+          import android.content.pm.PackageManager
+          import android.os.Build
           import android.os.Bundle
           import androidx.appcompat.app.AppCompatActivity
+          import androidx.core.app.ActivityCompat
           import androidx.core.content.ContextCompat
 
           class MainActivity : AppCompatActivity() {
               override fun onCreate(savedInstanceState: Bundle?) {
                   super.onCreate(savedInstanceState)
+                  // 安全のため権限リクエストを復活
+                  if (Build.VERSION.SDK_INT >= 33) {
+                      if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                          ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.POST_NOTIFICATIONS), 99)
+                      } else {
+                          startServiceSafe()
+                      }
+                  } else {
+                      startServiceSafe()
+                  }
+              }
+              
+              override fun onRequestPermissionsResult(rq: Int, p: Array<out String>, gr: IntArray) {
+                  super.onRequestPermissionsResult(rq, p, gr)
+                  startServiceSafe()
+              }
+              
+              private fun startServiceSafe() {
                   try {
                       val intent = Intent(this, AmbientMediaService::class.java)
                       ContextCompat.startForegroundService(this, intent)
@@ -171,7 +193,7 @@ jobs:
           }
           EOF
 
-          # --- 9. Media Service (8 Colors Edition) ---
+          # --- 9. Media Service (Stable 8 Colors) ---
           cat > app/src/main/java/jp/kazukun/ambient/AmbientMediaService.kt <<EOF
           package jp.kazukun.ambient
 
@@ -204,20 +226,14 @@ jobs:
               private val bgPaint = Paint()
 
               private var currentMode = 0 
-              // ★8色展開
               private val modeNames = listOf(
-                  "STAY",    // 0: Blue (Deep)
-                  "FLOW",    // 1: Teal (Intelligent)
-                  "DRIVE",   // 2: Red (Passion)
-                  "LOUNGE",  // 3: Purple (Elegant)
-                  "LUXURY",  // 4: Gold (Premium)
-                  "ICE",     // 5: Silver (Cool)
-                  "SPORT",   // 6: Orange (Energetic)
-                  "ECO"      // 7: Green (Fresh)
+                  "STAY", "FLOW", "DRIVE", "LOUNGE", 
+                  "LUXURY", "ICE", "SPORT", "ECO"
               )
               
               private val CHANNEL_ID = "ambient_media_channel"
               private val NOTIFICATION_ID = 555
+              private var isStarted = false
 
               override fun onCreate() {
                   super.onCreate()
@@ -241,8 +257,26 @@ jobs:
                           }
                       }
                   })
+              }
 
-                  updateDisplay()
+              override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+                  // ★修正: 起動処理をここに集約してクラッシュを回避
+                  try {
+                      val notif = buildNotification("Active")
+                      val type = ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+                      
+                      if (Build.VERSION.SDK_INT >= 29) {
+                          startForeground(NOTIFICATION_ID, notif, type)
+                      } else {
+                          startForeground(NOTIFICATION_ID, notif)
+                      }
+                      isStarted = true
+                      updateDisplay() // FGS化してから描画
+                  } catch (e: Exception) { 
+                      e.printStackTrace()
+                  }
+                  
+                  return START_STICKY
               }
 
               private fun initPaints() {
@@ -272,25 +306,19 @@ jobs:
               }
 
               private fun updateDisplay() {
+                  // 安全装置: 起動前なら処理しない
+                  if (!isStarted && Build.VERSION.SDK_INT >= 31) return
+
                   val shader = when(currentMode) {
-                      0 -> LinearGradient(0f, 0f, 0f, BITMAP_SIZE.toFloat(),
-                              Color.parseColor("#050510"), Color.parseColor("#1A237E"), Shader.TileMode.CLAMP) // Blue
-                      1 -> LinearGradient(0f, 0f, 0f, BITMAP_SIZE.toFloat(),
-                              Color.parseColor("#00251a"), Color.parseColor("#00695c"), Shader.TileMode.CLAMP) // Teal
-                      2 -> LinearGradient(0f, 0f, 0f, BITMAP_SIZE.toFloat(),
-                              Color.parseColor("#210000"), Color.parseColor("#b71c1c"), Shader.TileMode.CLAMP) // Red
-                      3 -> LinearGradient(0f, 0f, 0f, BITMAP_SIZE.toFloat(),
-                              Color.parseColor("#1a0033"), Color.parseColor("#6200ea"), Shader.TileMode.CLAMP) // Purple
-                      4 -> LinearGradient(0f, 0f, 0f, BITMAP_SIZE.toFloat(),
-                              Color.parseColor("#3e2723"), Color.parseColor("#ffd54f"), Shader.TileMode.CLAMP) // Gold
-                      5 -> LinearGradient(0f, 0f, 0f, BITMAP_SIZE.toFloat(),
-                              Color.parseColor("#263238"), Color.parseColor("#eceff1"), Shader.TileMode.CLAMP) // Silver
-                      6 -> LinearGradient(0f, 0f, 0f, BITMAP_SIZE.toFloat(),
-                              Color.parseColor("#3e1b00"), Color.parseColor("#ff6f00"), Shader.TileMode.CLAMP) // Orange
-                      7 -> LinearGradient(0f, 0f, 0f, BITMAP_SIZE.toFloat(),
-                              Color.parseColor("#003300"), Color.parseColor("#64dd17"), Shader.TileMode.CLAMP) // Green
-                      else -> LinearGradient(0f, 0f, 0f, BITMAP_SIZE.toFloat(),
-                              Color.parseColor("#000000"), Color.parseColor("#333333"), Shader.TileMode.CLAMP)
+                      0 -> LinearGradient(0f, 0f, 0f, BITMAP_SIZE.toFloat(), Color.parseColor("#050510"), Color.parseColor("#1A237E"), Shader.TileMode.CLAMP)
+                      1 -> LinearGradient(0f, 0f, 0f, BITMAP_SIZE.toFloat(), Color.parseColor("#00251a"), Color.parseColor("#00695c"), Shader.TileMode.CLAMP)
+                      2 -> LinearGradient(0f, 0f, 0f, BITMAP_SIZE.toFloat(), Color.parseColor("#210000"), Color.parseColor("#b71c1c"), Shader.TileMode.CLAMP)
+                      3 -> LinearGradient(0f, 0f, 0f, BITMAP_SIZE.toFloat(), Color.parseColor("#1a0033"), Color.parseColor("#6200ea"), Shader.TileMode.CLAMP)
+                      4 -> LinearGradient(0f, 0f, 0f, BITMAP_SIZE.toFloat(), Color.parseColor("#3e2723"), Color.parseColor("#ffd54f"), Shader.TileMode.CLAMP)
+                      5 -> LinearGradient(0f, 0f, 0f, BITMAP_SIZE.toFloat(), Color.parseColor("#263238"), Color.parseColor("#eceff1"), Shader.TileMode.CLAMP)
+                      6 -> LinearGradient(0f, 0f, 0f, BITMAP_SIZE.toFloat(), Color.parseColor("#3e1b00"), Color.parseColor("#ff6f00"), Shader.TileMode.CLAMP)
+                      7 -> LinearGradient(0f, 0f, 0f, BITMAP_SIZE.toFloat(), Color.parseColor("#003300"), Color.parseColor("#64dd17"), Shader.TileMode.CLAMP)
+                      else -> LinearGradient(0f, 0f, 0f, BITMAP_SIZE.toFloat(), Color.parseColor("#000000"), Color.parseColor("#333333"), Shader.TileMode.CLAMP)
                   }
                   bgPaint.shader = shader
                   canvas.drawRect(0f, 0f, BITMAP_SIZE.toFloat(), BITMAP_SIZE.toFloat(), bgPaint)
@@ -326,20 +354,12 @@ jobs:
                   
                   mediaSession.setPlaybackState(state)
 
-                  val notif = buildNotification("Mode: " + modeNames[currentMode])
-                  val mgr = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-                  mgr.notify(NOTIFICATION_ID, notif)
-              }
-
-              override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+                  // ★安全装置: 通知更新でエラーが出ても無視する（FGS化済みならOK）
                   try {
-                      val type = ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
-                      val notif = buildNotification("Active")
-                      if (Build.VERSION.SDK_INT >= 29) startForeground(NOTIFICATION_ID, notif, type)
-                      else startForeground(NOTIFICATION_ID, notif)
+                      val notif = buildNotification("Mode: " + modeNames[currentMode])
+                      val mgr = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                      mgr.notify(NOTIFICATION_ID, notif)
                   } catch (e: Exception) { }
-                  
-                  return START_STICKY
               }
 
               override fun onGetRoot(pkg: String, uid: Int, root: Bundle?): BrowserRoot {
@@ -348,13 +368,11 @@ jobs:
 
               override fun onLoadChildren(id: String, res: Result<MutableList<MediaBrowserCompat.MediaItem>>) {
                   val mediaItems = mutableListOf<MediaBrowserCompat.MediaItem>()
-                  
                   val desc = MediaDescriptionCompat.Builder()
                       .setMediaId("peugeot_item")
                       .setTitle("Peugeot Ambient")
                       .setSubtitle("Tap to start")
                       .build()
-                      
                   mediaItems.add(MediaBrowserCompat.MediaItem(desc, MediaBrowserCompat.MediaItem.FLAG_PLAYABLE))
                   res.sendResult(mediaItems)
               }
@@ -372,6 +390,7 @@ jobs:
                       .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
                       .setStyle(MediaStyle().setMediaSession(mediaSession.sessionToken))
                       .setOngoing(true)
+                      .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
                       .build()
               }
 
@@ -394,5 +413,5 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: AmbientFlow-8Colors-APK
+          name: AmbientFlow-Stable8Colors-APK
           path: app/build/outputs/apk/debug/app-debug.apk
