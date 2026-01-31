@@ -1,4 +1,4 @@
-name: Build Ambient Flow (Navi-Mode)
+name: Build Ambient Flow (Force-Navi)
 
 on:
   workflow_dispatch:
@@ -64,7 +64,7 @@ jobs:
           mkdir -p app/src/main/res/drawable
           mkdir -p app/src/main/res/mipmap-anydpi-v26
 
-          # --- 5. App Gradle (Switch to Car App Library) ---
+          # --- 5. App Gradle ---
           cat > app/build.gradle.kts <<EOF
           plugins { id("com.android.application"); id("org.jetbrains.kotlin.android") }
           android {
@@ -74,8 +74,8 @@ jobs:
                   applicationId = "jp.kazukun.ambient"
                   minSdk = 26
                   targetSdk = 35
-                  versionCode = 2000
-                  versionName = "200.0.NaviMode"
+                  versionCode = 3000
+                  versionName = "300.0.ForceNavi"
               }
               buildTypes { release { isMinifyEnabled = false } }
               compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
@@ -85,7 +85,6 @@ jobs:
           dependencies {
               implementation("androidx.core:core-ktx:1.12.0")
               implementation("androidx.appcompat:appcompat:1.6.1")
-              // ナビアプリ化のためのライブラリ
               implementation("androidx.car.app:app:1.4.0")
               implementation("com.google.android.gms:play-services-location:21.0.1")
           }
@@ -96,7 +95,6 @@ jobs:
           <resources><string name="app_name">Ambient Flow</string></resources>
           EOF
           
-          # ★ここが重要: カテゴリを "navigation" に変更
           cat > app/src/main/res/xml/automotive_app_desc.xml <<EOF
           <automotiveApp>
               <uses name="navigation"/>
@@ -127,7 +125,7 @@ jobs:
           EOF
           cp app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml
 
-          # --- 7. Manifest (Navigation Category) ---
+          # --- 7. Manifest (Enhanced for Visibility) ---
           cat > app/src/main/AndroidManifest.xml <<EOF
           <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
@@ -144,11 +142,15 @@ jobs:
                       <intent-filter>
                           <action android:name="androidx.car.app.CarAppService" />
                           <category android:name="androidx.car.app.category.NAVIGATION"/>
+                          <category android:name="android.intent.category.DEFAULT" />
                       </intent-filter>
                   </service>
 
                   <activity android:name=".MainActivity" android:exported="true">
-                      <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
                   </activity>
               </application>
           </manifest>
@@ -167,7 +169,6 @@ jobs:
           class MainActivity : AppCompatActivity() {
               override fun onCreate(savedInstanceState: Bundle?) {
                   super.onCreate(savedInstanceState)
-                  // ナビアプリとして動くために、位置情報権限を事前に求めておく
                   if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
                       ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.ACCESS_FINE_LOCATION), 99)
                   }
@@ -175,12 +176,11 @@ jobs:
           }
           EOF
 
-          # --- 9. Car Service (Navigation Mode) ---
+          # --- 9. Car Service (Navi Logic) ---
           cat > app/src/main/java/jp/kazukun/ambient/AmbientCarService.kt <<EOF
           package jp.kazukun.ambient
 
           import android.graphics.*
-          import android.view.Surface
           import androidx.car.app.CarAppService
           import androidx.car.app.CarContext
           import androidx.car.app.Screen
@@ -194,7 +194,6 @@ jobs:
           import androidx.lifecycle.LifecycleOwner
 
           class AmbientCarService : CarAppService() {
-              // どんな車でも接続OKにする設定
               override fun createHostValidator() = HostValidator.ALLOW_ALL_HOSTS_VALIDATOR
               override fun onCreateSession() = AmbientSession()
           }
@@ -206,7 +205,7 @@ jobs:
           }
 
           class AmbientScreen(carContext: CarContext) : Screen(carContext), DefaultLifecycleObserver {
-              private var surface: Surface? = null
+              private var surface: android.view.Surface? = null
               private var width = 0
               private var height = 0
               
@@ -215,7 +214,6 @@ jobs:
               private val subPaint = Paint()
               private val bgPaint = Paint()
 
-              // 8色モード
               private var currentMode = 0
               private val modeNames = listOf(
                   "STAY", "FLOW", "DRIVE", "LOUNGE", 
@@ -255,9 +253,9 @@ jobs:
               }
 
               override fun onGetTemplate(): Template {
-                  // ナビアプリとして画面を作り、右上に色変更ボタンを置く
+                  // ナビアプリとして認識させるためのアクション
                   val action = Action.Builder()
-                      .setIcon(CarIcon.APP_ICON) // 高級アイコンの代わりにアプリアイコンを使用(確実性のため)
+                      .setIcon(CarIcon.APP_ICON)
                       .setOnClickListener { onModeChange() }
                       .build()
 
@@ -270,7 +268,7 @@ jobs:
 
               private fun onModeChange() {
                   currentMode = (currentMode + 1) % modeNames.size
-                  drawFrame() // ★ボタンを押した時だけ描画（超軽量）
+                  drawFrame()
                   invalidate()
               }
 
@@ -279,7 +277,7 @@ jobs:
                       surface = surfaceContainer.surface
                       width = surfaceContainer.width
                       height = surfaceContainer.height
-                      drawFrame() // 画面準備完了時に描画
+                      drawFrame()
                   }
                   override fun onSurfaceDestroyed(surfaceContainer: SurfaceContainer) {
                       surface = null
@@ -293,7 +291,6 @@ jobs:
                   try {
                       val canvas = s.lockCanvas(null) ?: return
                       try {
-                          // グラデーション選択
                           val shader = when(currentMode) {
                               0 -> LinearGradient(0f, 0f, 0f, height.toFloat(), Color.parseColor("#050510"), Color.parseColor("#1A237E"), Shader.TileMode.CLAMP)
                               1 -> LinearGradient(0f, 0f, 0f, height.toFloat(), Color.parseColor("#00251a"), Color.parseColor("#00695c"), Shader.TileMode.CLAMP)
@@ -323,7 +320,6 @@ jobs:
               }
               
               override fun onCreate(owner: LifecycleOwner) {
-                  // ナビアプリとしての描画コールバックを登録
                   carContext.getCarService(androidx.car.app.AppManager::class.java).setSurfaceCallback(surfaceCallback)
               }
           }
@@ -338,5 +334,5 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: AmbientFlow-NaviMode-APK
+          name: AmbientFlow-ForceNavi-APK
           path: app/build/outputs/apk/debug/app-debug.apk
