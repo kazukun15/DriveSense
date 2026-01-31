@@ -1,4 +1,4 @@
-name: Build Ambient Flow (Fix Errors)
+name: Build Ambient Flow (8 Colors)
 
 on:
   workflow_dispatch:
@@ -74,8 +74,8 @@ jobs:
                   applicationId = "jp.kazukun.ambient"
                   minSdk = 26
                   targetSdk = 35
-                  versionCode = 500
-                  versionName = "50.0.FixErrors"
+                  versionCode = 800
+                  versionName = "80.0.EightColors"
               }
               buildTypes { release { isMinifyEnabled = false } }
               compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
@@ -126,7 +126,7 @@ jobs:
           EOF
           cp app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml
 
-          # --- 7. Manifest (Cleaned up) ---
+          # --- 7. Manifest ---
           cat > app/src/main/AndroidManifest.xml <<EOF
           <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
@@ -171,7 +171,7 @@ jobs:
           }
           EOF
 
-          # --- 9. Media Service (Fixed Errors) ---
+          # --- 9. Media Service (8 Colors Edition) ---
           cat > app/src/main/java/jp/kazukun/ambient/AmbientMediaService.kt <<EOF
           package jp.kazukun.ambient
 
@@ -201,12 +201,20 @@ jobs:
               private val textPaint = Paint()
               private val peugeotPaint = Paint()
               private val subPaint = Paint()
-              
-              // ★修正: 前回忘れていた bgPaint をここで定義
               private val bgPaint = Paint()
 
               private var currentMode = 0 
-              private val modeNames = listOf("STAY", "FLOW", "DRIVE")
+              // ★8色展開
+              private val modeNames = listOf(
+                  "STAY",    // 0: Blue (Deep)
+                  "FLOW",    // 1: Teal (Intelligent)
+                  "DRIVE",   // 2: Red (Passion)
+                  "LOUNGE",  // 3: Purple (Elegant)
+                  "LUXURY",  // 4: Gold (Premium)
+                  "ICE",     // 5: Silver (Cool)
+                  "SPORT",   // 6: Orange (Energetic)
+                  "ECO"      // 7: Green (Fresh)
+              )
               
               private val CHANNEL_ID = "ambient_media_channel"
               private val NOTIFICATION_ID = 555
@@ -223,13 +231,12 @@ jobs:
                   mediaSession.setCallback(object : MediaSessionCompat.Callback() {
                       override fun onPlay() { updateDisplay() }
                       override fun onPrepare() { 
-                          // ★修正: mediaSession.isActive と明記してエラー解消
                           mediaSession.isActive = true
                           updateDisplay() 
                       }
                       override fun onCustomAction(action: String?, extras: Bundle?) {
                           if (action == "ACTION_CHANGE_COLOR") {
-                              currentMode = (currentMode + 1) % 3
+                              currentMode = (currentMode + 1) % modeNames.size
                               updateDisplay()
                           }
                       }
@@ -267,11 +274,23 @@ jobs:
               private fun updateDisplay() {
                   val shader = when(currentMode) {
                       0 -> LinearGradient(0f, 0f, 0f, BITMAP_SIZE.toFloat(),
-                              Color.parseColor("#050510"), Color.parseColor("#1A237E"), Shader.TileMode.CLAMP)
+                              Color.parseColor("#050510"), Color.parseColor("#1A237E"), Shader.TileMode.CLAMP) // Blue
                       1 -> LinearGradient(0f, 0f, 0f, BITMAP_SIZE.toFloat(),
-                              Color.parseColor("#00251a"), Color.parseColor("#00695c"), Shader.TileMode.CLAMP)
+                              Color.parseColor("#00251a"), Color.parseColor("#00695c"), Shader.TileMode.CLAMP) // Teal
+                      2 -> LinearGradient(0f, 0f, 0f, BITMAP_SIZE.toFloat(),
+                              Color.parseColor("#210000"), Color.parseColor("#b71c1c"), Shader.TileMode.CLAMP) // Red
+                      3 -> LinearGradient(0f, 0f, 0f, BITMAP_SIZE.toFloat(),
+                              Color.parseColor("#1a0033"), Color.parseColor("#6200ea"), Shader.TileMode.CLAMP) // Purple
+                      4 -> LinearGradient(0f, 0f, 0f, BITMAP_SIZE.toFloat(),
+                              Color.parseColor("#3e2723"), Color.parseColor("#ffd54f"), Shader.TileMode.CLAMP) // Gold
+                      5 -> LinearGradient(0f, 0f, 0f, BITMAP_SIZE.toFloat(),
+                              Color.parseColor("#263238"), Color.parseColor("#eceff1"), Shader.TileMode.CLAMP) // Silver
+                      6 -> LinearGradient(0f, 0f, 0f, BITMAP_SIZE.toFloat(),
+                              Color.parseColor("#3e1b00"), Color.parseColor("#ff6f00"), Shader.TileMode.CLAMP) // Orange
+                      7 -> LinearGradient(0f, 0f, 0f, BITMAP_SIZE.toFloat(),
+                              Color.parseColor("#003300"), Color.parseColor("#64dd17"), Shader.TileMode.CLAMP) // Green
                       else -> LinearGradient(0f, 0f, 0f, BITMAP_SIZE.toFloat(),
-                              Color.parseColor("#210000"), Color.parseColor("#b71c1c"), Shader.TileMode.CLAMP)
+                              Color.parseColor("#000000"), Color.parseColor("#333333"), Shader.TileMode.CLAMP)
                   }
                   bgPaint.shader = shader
                   canvas.drawRect(0f, 0f, BITMAP_SIZE.toFloat(), BITMAP_SIZE.toFloat(), bgPaint)
@@ -375,5 +394,5 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: AmbientFlow-FixErrors-APK
+          name: AmbientFlow-8Colors-APK
           path: app/build/outputs/apk/debug/app-debug.apk
