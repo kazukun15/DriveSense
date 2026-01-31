@@ -1,4 +1,4 @@
-name: Build Ambient Flow (Luxury Button)
+name: Build Ambient Flow (Fix Errors)
 
 on:
   workflow_dispatch:
@@ -74,8 +74,8 @@ jobs:
                   applicationId = "jp.kazukun.ambient"
                   minSdk = 26
                   targetSdk = 35
-                  versionCode = 400
-                  versionName = "40.0.LuxuryButton"
+                  versionCode = 500
+                  versionName = "50.0.FixErrors"
               }
               buildTypes { release { isMinifyEnabled = false } }
               compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
@@ -102,7 +102,7 @@ jobs:
           EOF
 
           # --- Icons ---
-          # 高級感のあるパレットアイコン (Luxury Button)
+          # 高級感のあるパレットアイコン
           cat > app/src/main/res/drawable/ic_palette_luxury.xml <<EOF
           <vector xmlns:android="http://schemas.android.com/apk/res/android"
               android:width="24dp"
@@ -126,10 +126,10 @@ jobs:
           EOF
           cp app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml
 
-          # --- 7. Manifest ---
+          # --- 7. Manifest (Cleaned up) ---
           cat > app/src/main/AndroidManifest.xml <<EOF
           <?xml version="1.0" encoding="utf-8"?>
-          <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="jp.kazukun.ambient">
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
               <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
               <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
               <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
@@ -171,7 +171,7 @@ jobs:
           }
           EOF
 
-          # --- 9. Media Service (Luxury Button Implemented) ---
+          # --- 9. Media Service (Fixed Errors) ---
           cat > app/src/main/java/jp/kazukun/ambient/AmbientMediaService.kt <<EOF
           package jp.kazukun.ambient
 
@@ -198,10 +198,12 @@ jobs:
               private val BITMAP_SIZE = 1024
               private val bitmap = Bitmap.createBitmap(BITMAP_SIZE, BITMAP_SIZE, Bitmap.Config.ARGB_8888)
               private val canvas = Canvas(bitmap)
-              private val paint = Paint()
               private val textPaint = Paint()
               private val peugeotPaint = Paint()
               private val subPaint = Paint()
+              
+              // ★修正: 前回忘れていた bgPaint をここで定義
+              private val bgPaint = Paint()
 
               private var currentMode = 0 
               private val modeNames = listOf("STAY", "FLOW", "DRIVE")
@@ -220,8 +222,11 @@ jobs:
                   
                   mediaSession.setCallback(object : MediaSessionCompat.Callback() {
                       override fun onPlay() { updateDisplay() }
-                      override fun onPrepare() { isActive = true; updateDisplay() }
-                      // カスタムアクション: 高級ボタンで色を変える
+                      override fun onPrepare() { 
+                          // ★修正: mediaSession.isActive と明記してエラー解消
+                          mediaSession.isActive = true
+                          updateDisplay() 
+                      }
                       override fun onCustomAction(action: String?, extras: Bundle?) {
                           if (action == "ACTION_CHANGE_COLOR") {
                               currentMode = (currentMode + 1) % 3
@@ -288,16 +293,15 @@ jobs:
                       .build()
                   mediaSession.setMetadata(metadata)
 
-                  // ★ここが4番の設定: 高級アイコンを使ったカスタムアクション
                   val customAction = PlaybackStateCompat.CustomAction.Builder(
                       "ACTION_CHANGE_COLOR",
                       "Change Color",
-                      R.drawable.ic_palette_luxury // 高級アイコンを指定
+                      R.drawable.ic_palette_luxury
                   ).build()
 
                   val state = PlaybackStateCompat.Builder()
                       .setActions(PlaybackStateCompat.ACTION_PLAY_PAUSE)
-                      .addCustomAction(customAction) // アクション追加
+                      .addCustomAction(customAction)
                       .setState(PlaybackStateCompat.STATE_PLAYING, 0L, 1.0f)
                       .build()
                   
@@ -343,7 +347,7 @@ jobs:
                    return NotificationCompat.Builder(this, CHANNEL_ID)
                       .setContentTitle("Ambient Flow")
                       .setContentText(text)
-                      .setSmallIcon(R.drawable.ic_palette_luxury) // 通知アイコンも高級に
+                      .setSmallIcon(R.drawable.ic_palette_luxury)
                       .setLargeIcon(bitmap)
                       .setContentIntent(pendingIntent)
                       .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
@@ -371,5 +375,5 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: AmbientFlow-LuxuryButton-APK
+          name: AmbientFlow-FixErrors-APK
           path: app/build/outputs/apk/debug/app-debug.apk
