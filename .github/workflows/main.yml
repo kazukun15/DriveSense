@@ -1,4 +1,4 @@
-name: Build Ambient Flow (Final Static)
+name: Build Ambient Flow (POI Edition)
 
 on:
   workflow_dispatch:
@@ -64,7 +64,7 @@ jobs:
           mkdir -p app/src/main/res/drawable
           mkdir -p app/src/main/res/mipmap-anydpi-v26
 
-          # --- 5. App Gradle (Car Library Included) ---
+          # --- 5. App Gradle ---
           cat > app/build.gradle.kts <<EOF
           plugins { id("com.android.application"); id("org.jetbrains.kotlin.android") }
           android {
@@ -74,21 +74,17 @@ jobs:
                   applicationId = "jp.kazukun.ambient"
                   minSdk = 26
                   targetSdk = 35
-                  versionCode = 120
-                  versionName = "16.0.StaticFix"
+                  versionCode = 200
+                  versionName = "20.0.POI"
               }
               buildTypes { release { isMinifyEnabled = false } }
               compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
               kotlinOptions { jvmTarget = "17" }
-              lint { 
-                  abortOnError = false 
-                  checkReleaseBuilds = false
-              }
+              lint { abortOnError = false; checkReleaseBuilds = false }
           }
           dependencies {
               implementation("androidx.core:core-ktx:1.12.0")
               implementation("androidx.appcompat:appcompat:1.6.1")
-              // Car App Library
               implementation("androidx.car.app:app:1.4.0")
               implementation("com.google.android.gms:play-services-location:21.0.1")
           }
@@ -99,10 +95,10 @@ jobs:
           <resources><string name="app_name">Ambient Flow</string></resources>
           EOF
           
-          # Car App Category (Navigation is Key)
+          # ★修正: カテゴリを POI (Point of Interest) に変更。これで起動します。
           cat > app/src/main/res/xml/automotive_app_desc.xml <<EOF
           <automotiveApp>
-              <uses name="navigation"/>
+              <uses name="poi"/>
           </automotiveApp>
           EOF
 
@@ -118,7 +114,7 @@ jobs:
           EOF
           cp app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml
 
-          # --- 7. Manifest ---
+          # --- 7. Manifest (POI Category) ---
           cat > app/src/main/AndroidManifest.xml <<EOF
           <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="jp.kazukun.ambient">
@@ -126,7 +122,6 @@ jobs:
               <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
               <uses-permission android:name="android.permission.INTERNET" />
               <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-              <uses-permission android:name="androidx.car.app.ACCESS_SURFACE" /> 
 
               <application android:label="Ambient Flow" android:icon="@mipmap/ic_launcher" android:theme="@style/Theme.AppCompat.NoActionBar">
                   <meta-data android:name="com.google.android.gms.car.application" android:resource="@xml/automotive_app_desc" />
@@ -135,7 +130,7 @@ jobs:
                   <service android:name=".AmbientCarService" android:exported="true">
                       <intent-filter>
                           <action android:name="androidx.car.app.CarAppService" />
-                          <category android:name="androidx.car.app.category.NAVIGATION"/>
+                          <category android:name="androidx.car.app.category.POI"/>
                       </intent-filter>
                   </service>
 
@@ -159,7 +154,6 @@ jobs:
           class MainActivity : AppCompatActivity() {
               override fun onCreate(savedInstanceState: Bundle?) {
                   super.onCreate(savedInstanceState)
-                  // ナビアプリは位置情報必須のためリクエスト
                   if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
                       ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.ACCESS_FINE_LOCATION), 99)
                   }
@@ -167,30 +161,20 @@ jobs:
           }
           EOF
 
-          # --- 9. Car App Service (Correct Imports & Logic) ---
+          # --- 9. Car App Service (POI Template Edition) ---
           cat > app/src/main/java/jp/kazukun/ambient/AmbientCarService.kt <<EOF
           package jp.kazukun.ambient
 
-          import android.Manifest
-          import android.content.pm.PackageManager
           import android.graphics.*
-          // ★修正: 必須インポート追加
-          import android.view.Surface
           import androidx.car.app.CarAppService
           import androidx.car.app.CarContext
           import androidx.car.app.Screen
           import androidx.car.app.Session
-          import androidx.car.app.SurfaceCallback
-          import androidx.car.app.SurfaceContainer
           import androidx.car.app.model.*
-          import androidx.car.app.navigation.model.NavigationTemplate
           import androidx.car.app.validation.HostValidator
-          import androidx.core.content.ContextCompat
-          import androidx.lifecycle.DefaultLifecycleObserver
-          import androidx.lifecycle.LifecycleOwner
+          import androidx.core.graphics.drawable.IconCompat
 
           class AmbientCarService : CarAppService() {
-              // バリデーター設定（必須）
               override fun createHostValidator() = HostValidator.ALLOW_ALL_HOSTS_VALIDATOR
               override fun onCreateSession() = AmbientSession()
           }
@@ -201,131 +185,93 @@ jobs:
               }
           }
 
-          class AmbientScreen(carContext: CarContext) : Screen(carContext), DefaultLifecycleObserver {
-              private var surface: Surface? = null
-              private var width = 0
-              private var height = 0
-              
-              // 描画ツール
+          class AmbientScreen(carContext: CarContext) : Screen(carContext) {
+              private val paint = Paint()
               private val textPaint = Paint()
               private val peugeotPaint = Paint()
               private val subPaint = Paint()
-              private val bgPaint = Paint()
-
-              // 色モード管理 (0:STAY, 1:FLOW, 2:DRIVE)
+              
               private var currentMode = 0
               private val modeNames = listOf("STAY", "FLOW", "DRIVE")
-
+              
               init {
-                  lifecycle.addObserver(this)
                   initPaints()
               }
-              
+
               private fun initPaints() {
                   textPaint.apply {
                       isAntiAlias = true
                       textAlign = Paint.Align.CENTER
                       color = Color.WHITE
-                      textSize = 60f
+                      textSize = 40f
                       typeface = Typeface.create(Typeface.SERIF, Typeface.BOLD)
-                      setShadowLayer(20f, 0f, 0f, Color.BLACK)
+                      setShadowLayer(10f, 0f, 0f, Color.BLACK)
                   }
-                  
-                  // Peugeot Logo (Platinum)
                   peugeotPaint.apply {
                       isAntiAlias = true
                       textAlign = Paint.Align.CENTER
                       color = Color.parseColor("#E5E4E2")
-                      textSize = 80f
+                      textSize = 50f
                       typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD_ITALIC)
-                      setShadowLayer(20f, 0f, 0f, Color.parseColor("#60000000"))
-                      letterSpacing = 0.1f
+                      setShadowLayer(10f, 0f, 0f, Color.parseColor("#60000000"))
                   }
-                  
                   subPaint.apply {
                       isAntiAlias = true
                       textAlign = Paint.Align.CENTER
                       color = Color.parseColor("#B0BEC5")
-                      textSize = 40f
-                      typeface = Typeface.DEFAULT
+                      textSize = 30f
                   }
-                  bgPaint.isAntiAlias = true
               }
 
               override fun onGetTemplate(): Template {
-                  // ★ボタン設定: 押すと色が切り替わる
-                  val action = Action.Builder()
-                      .setTitle("Change Color")
-                      .setOnClickListener { onModeChange() }
+                  // ★PaneTemplateを使用。Surface(動画)ではなく、Bitmap(画像)を生成して表示する
+                  val bitmap = generateBitmap()
+                  val carIcon = CarIcon.Builder(IconCompat.createWithBitmap(bitmap)).build()
+
+                  val pane = Pane.Builder()
+                      .setImage(carIcon)
+                      .addAction(
+                          Action.Builder()
+                              .setTitle("Change Color")
+                              .setOnClickListener { 
+                                  currentMode = (currentMode + 1) % 3
+                                  invalidate() // 画面更新
+                              }
+                              .build()
+                      )
                       .build()
 
-                  val actionStrip = ActionStrip.Builder().addAction(action).build()
-
-                  // ナビゲーションテンプレート（地図エリアはCanvasで描画）
-                  return NavigationTemplate.Builder()
-                      .setActionStrip(actionStrip)
+                  return PaneTemplate.Builder(pane)
+                      .setTitle("Peugeot Ambient")
                       .build()
               }
 
-              // ボタンクリック時の処理
-              private fun onModeChange() {
-                  currentMode = (currentMode + 1) % 3
-                  drawFrame() // ★ここだけ描画（超軽量）
-                  invalidate() // テンプレート更新通知
-              }
+              private fun generateBitmap(): Bitmap {
+                  val width = 800
+                  val height = 600
+                  val bmp = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+                  val canvas = Canvas(bmp)
 
-              private val surfaceCallback = object : SurfaceCallback {
-                  override fun onSurfaceAvailable(surfaceContainer: SurfaceContainer) {
-                      surface = surfaceContainer.surface
-                      width = surfaceContainer.width
-                      height = surfaceContainer.height
-                      // 画面準備完了時に1回だけ描画
-                      drawFrame()
+                  // グラデーション描画
+                  val shader = when(currentMode) {
+                      0 -> LinearGradient(0f, 0f, 0f, height.toFloat(),
+                              Color.parseColor("#050510"), Color.parseColor("#1A237E"), Shader.TileMode.CLAMP)
+                      1 -> LinearGradient(0f, 0f, 0f, height.toFloat(),
+                              Color.parseColor("#00251a"), Color.parseColor("#00695c"), Shader.TileMode.CLAMP)
+                      else -> LinearGradient(0f, 0f, 0f, height.toFloat(),
+                              Color.parseColor("#210000"), Color.parseColor("#b71c1c"), Shader.TileMode.CLAMP)
                   }
-                  override fun onSurfaceDestroyed(surfaceContainer: SurfaceContainer) {
-                      surface = null
-                  }
-              }
+                  paint.shader = shader
+                  canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paint)
 
-              // 1フレーム描画関数（ループなし・安全設計）
-              private fun drawFrame() {
-                  val s = surface ?: return
-                  if (width == 0 || height == 0) return
-
-                  try {
-                      val canvas = s.lockCanvas(null) ?: return
-                      try {
-                          // 背景グラデーション選択
-                          val shader = when(currentMode) {
-                              0 -> LinearGradient(0f, 0f, 0f, height.toFloat(),
-                                      Color.parseColor("#050510"), Color.parseColor("#1A237E"), Shader.TileMode.CLAMP) // Blue (STAY)
-                              1 -> LinearGradient(0f, 0f, 0f, height.toFloat(),
-                                      Color.parseColor("#00251a"), Color.parseColor("#00695c"), Shader.TileMode.CLAMP) // Teal (FLOW)
-                              else -> LinearGradient(0f, 0f, 0f, height.toFloat(),
-                                      Color.parseColor("#210000"), Color.parseColor("#b71c1c"), Shader.TileMode.CLAMP) // Red (DRIVE)
-                          }
-                          
-                          bgPaint.shader = shader
-                          canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), bgPaint)
-
-                          // 文字描画
-                          val cx = width / 2f
-                          val cy = height / 2f
-                          
-                          canvas.drawText("Ambient Flow", cx, cy - 100f, textPaint)
-                          canvas.drawText("PEUGEOT", cx, cy + 20f, peugeotPaint)
-                          canvas.drawText("Mode: " + modeNames[currentMode], cx, cy + 120f, subPaint)
-
-                      } finally {
-                          s.unlockCanvasAndPost(canvas)
-                      }
-                  } catch (e: Exception) {
-                      e.printStackTrace()
-                  }
-              }
-              
-              override fun onCreate(owner: LifecycleOwner) {
-                  carContext.getCarService(androidx.car.app.AppManager::class.java).setSurfaceCallback(surfaceCallback)
+                  val cx = width / 2f
+                  val cy = height / 2f
+                  
+                  canvas.drawText("Ambient Flow", cx, cy - 80f, textPaint)
+                  canvas.drawText("PEUGEOT", cx, cy + 10f, peugeotPaint)
+                  canvas.drawText("Mode: " + modeNames[currentMode], cx, cy + 90f, subPaint)
+                  
+                  return bmp
               }
           }
           EOF
@@ -339,5 +285,5 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: AmbientFlow-FinalStatic-APK
+          name: AmbientFlow-POI-APK
           path: app/build/outputs/apk/debug/app-debug.apk
