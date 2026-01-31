@@ -1,4 +1,4 @@
-name: Build Ambient Flow (Navigation Edition)
+name: Build Ambient Flow (Fix Nav)
 
 on:
   workflow_dispatch:
@@ -71,20 +71,23 @@ jobs:
               compileSdk = 35
               defaultConfig {
                   applicationId = "jp.kazukun.ambient"
-                  minSdk = 26 // Car App Library requires min 23+
+                  minSdk = 26
                   targetSdk = 35
-                  versionCode = 60
-                  versionName = "12.0.Navigation"
+                  versionCode = 70
+                  versionName = "13.0.NavFix"
               }
               buildTypes { release { isMinifyEnabled = false } }
               compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
               kotlinOptions { jvmTarget = "17" }
-              lint { abortOnError = false }
+              lint { 
+                  abortOnError = false 
+                  checkReleaseBuilds = false
+              }
           }
           dependencies {
               implementation("androidx.core:core-ktx:1.12.0")
               implementation("androidx.appcompat:appcompat:1.6.1")
-              // ★ナビアプリ化の要: Android for Cars App Library
+              // Car App Library
               implementation("androidx.car.app:app:1.4.0")
               implementation("com.google.android.gms:play-services-location:21.0.1")
           }
@@ -95,7 +98,7 @@ jobs:
           <resources><string name="app_name">Ambient Flow</string></resources>
           EOF
           
-          # ★重要: カテゴリを "navigation" に変更
+          # Car App Category
           cat > app/src/main/res/xml/automotive_app_desc.xml <<EOF
           <automotiveApp>
               <uses name="navigation"/>
@@ -126,6 +129,7 @@ jobs:
 
               <application android:label="Ambient Flow" android:icon="@mipmap/ic_launcher" android:theme="@style/Theme.AppCompat.NoActionBar">
                   <meta-data android:name="com.google.android.gms.car.application" android:resource="@xml/automotive_app_desc" />
+                  <meta-data android:name="androidx.car.app.minCarApiLevel" android:value="1" />
                   
                   <service android:name=".AmbientCarService" android:exported="true">
                       <intent-filter>
@@ -141,7 +145,7 @@ jobs:
           </manifest>
           EOF
 
-          # --- 8. MainActivity (Permissions) ---
+          # --- 8. MainActivity ---
           cat > app/src/main/java/jp/kazukun/ambient/MainActivity.kt <<EOF
           package jp.kazukun.ambient
           import android.Manifest
@@ -162,7 +166,7 @@ jobs:
           }
           EOF
 
-          # --- 9. Car App Service & Screen (The New Engine) ---
+          # --- 9. Car App Service & Screen (Fix Missing Import) ---
           cat > app/src/main/java/jp/kazukun/ambient/AmbientCarService.kt <<EOF
           package jp.kazukun.ambient
 
@@ -178,11 +182,15 @@ jobs:
           import androidx.car.app.SurfaceContainer
           import androidx.car.app.model.*
           import androidx.car.app.navigation.model.NavigationTemplate
+          // ★修正箇所：このインポートを追加してエラーを解消
+          import androidx.car.app.validation.HostValidator
+          
           import androidx.core.content.ContextCompat
           import androidx.lifecycle.DefaultLifecycleObserver
           import androidx.lifecycle.LifecycleOwner
 
           class AmbientCarService : CarAppService() {
+              // ここでエラーが出ていました。Importを追加したので直ります。
               override fun createHostValidator() = HostValidator.ALLOW_ALL_HOSTS_VALIDATOR
               override fun onCreateSession() = AmbientSession()
           }
@@ -197,12 +205,12 @@ jobs:
               private var surface: Surface? = null
               private val paint = Paint()
               private val textPaint = Paint()
+              private val peugeotPaint = Paint() // New Paint
               private val subPaint = Paint()
               private var width = 0
               private var height = 0
               private var isRunning = false
               
-              private var lastSpeed = -1f
               private var currentGradient: Shader? = null
 
               init {
@@ -219,22 +227,32 @@ jobs:
                       typeface = Typeface.create(Typeface.SERIF, Typeface.BOLD)
                       setShadowLayer(20f, 0f, 0f, Color.BLACK)
                   }
+                  
+                  // Peugeot Logo Paint
+                  peugeotPaint.apply {
+                      isAntiAlias = true
+                      textAlign = Paint.Align.CENTER
+                      color = Color.parseColor("#E0E0E0") // Platinum
+                      textSize = 70f
+                      typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD_ITALIC)
+                      setShadowLayer(15f, 0f, 0f, Color.parseColor("#50000000"))
+                  }
+                  
                   subPaint.apply {
                       isAntiAlias = true
                       textAlign = Paint.Align.CENTER
-                      color = Color.parseColor("#E0E0E0")
+                      color = Color.parseColor("#B0BEC5")
                       textSize = 40f
-                      typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD_ITALIC)
+                      typeface = Typeface.DEFAULT
                   }
               }
 
               override fun onGetTemplate(): Template {
-                  // ★ナビゲーションテンプレートを使用（地図の代わりにCanvasを描画）
+                  // ナビゲーションテンプレートを使用
                   return NavigationTemplate.Builder()
                       .setActionStrip(ActionStrip.Builder()
-                          .addAction(Action.Builder().setTitle("Mode").setOnClickListener { 
-                              // ダミーボタン: 押すとログが出るだけ（機能拡張用）
-                              carContext.requestPermissions(listOf(Manifest.permission.ACCESS_FINE_LOCATION)) { _,_ -> }
+                          .addAction(Action.Builder().setTitle("PEUGEOT").setOnClickListener { 
+                              // ダミーアクション
                           }.build())
                           .build())
                       .build()
@@ -271,9 +289,8 @@ jobs:
               }
 
               private fun drawFrame(canvas: Canvas) {
-                  // 背景（グラデーション）
+                  // 背景（グラデーション - Peugeot Style）
                   if (currentGradient == null || width > 0) {
-                      // 初期グラデーション (Stay)
                       currentGradient = LinearGradient(0f, 0f, 0f, height.toFloat(),
                           Color.parseColor("#050510"), Color.parseColor("#1A237E"), Shader.TileMode.CLAMP)
                   }
@@ -284,12 +301,18 @@ jobs:
                   // 文字描画
                   val cx = width / 2f
                   val cy = height / 2f
-                  canvas.drawText("PEUGEOT", cx, cy, textPaint)
-                  canvas.drawText("Ambient Flow", cx, cy + 80f, subPaint)
+                  
+                  // 上: Ambient Flow
+                  canvas.drawText("Ambient Flow", cx, cy - 80f, textPaint)
+                  
+                  // 中: PEUGEOT (Platinum)
+                  canvas.drawText("PEUGEOT", cx, cy + 20f, peugeotPaint)
+                  
+                  // 下: i-Cockpit
+                  canvas.drawText("i-Cockpit Mode", cx, cy + 100f, subPaint)
               }
               
               override fun onCreate(owner: LifecycleOwner) {
-                  // ナビアプリとして画面を描画するコールバックを登録
                   carContext.getCarService(androidx.car.app.AppManager::class.java).setSurfaceCallback(surfaceCallback)
               }
           }
@@ -304,5 +327,5 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: AmbientFlow-Navigation-APK
+          name: AmbientFlow-NavFix-APK
           path: app/build/outputs/apk/debug/app-debug.apk
