@@ -1,4 +1,4 @@
-name: Build Ambient Flow (Perfect Edition)
+name: Build Ambient Flow (Navigation Edition)
 
 on:
   workflow_dispatch:
@@ -63,7 +63,7 @@ jobs:
           mkdir -p app/src/main/res/drawable
           mkdir -p app/src/main/res/mipmap-anydpi-v26
 
-          # --- 5. App Gradle (Lint Fix Included) ---
+          # --- 5. App Gradle (Add Car Library) ---
           cat > app/build.gradle.kts <<EOF
           plugins { id("com.android.application"); id("org.jetbrains.kotlin.android") }
           android {
@@ -71,25 +71,22 @@ jobs:
               compileSdk = 35
               defaultConfig {
                   applicationId = "jp.kazukun.ambient"
-                  minSdk = 26
+                  minSdk = 26 // Car App Library requires min 23+
                   targetSdk = 35
-                  versionCode = 50
-                  versionName = "11.0.Perfect"
+                  versionCode = 60
+                  versionName = "12.0.Navigation"
               }
               buildTypes { release { isMinifyEnabled = false } }
               compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
               kotlinOptions { jvmTarget = "17" }
-              lint {
-                  abortOnError = false
-                  checkReleaseBuilds = false
-              }
+              lint { abortOnError = false }
           }
           dependencies {
               implementation("androidx.core:core-ktx:1.12.0")
               implementation("androidx.appcompat:appcompat:1.6.1")
-              implementation("androidx.media:media:1.7.0")
+              // ★ナビアプリ化の要: Android for Cars App Library
+              implementation("androidx.car.app:app:1.4.0")
               implementation("com.google.android.gms:play-services-location:21.0.1")
-              implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
           }
           EOF
 
@@ -97,13 +94,17 @@ jobs:
           cat > app/src/main/res/values/strings.xml <<EOF
           <resources><string name="app_name">Ambient Flow</string></resources>
           EOF
+          
+          # ★重要: カテゴリを "navigation" に変更
           cat > app/src/main/res/xml/automotive_app_desc.xml <<EOF
-          <automotiveApp xmlns:android="http://schemas.android.com/apk/res/android"><uses name="media"/></automotiveApp>
+          <automotiveApp>
+              <uses name="navigation"/>
+          </automotiveApp>
           EOF
 
           # --- Icons ---
           cat > app/src/main/res/drawable/ic_launcher_background.xml <<EOF
-          <vector android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108" xmlns:android="http://schemas.android.com/apk/res/android"><path android:fillColor="#121212" android:pathData="M0,0h108v108h-108z"/></vector>
+          <vector android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108" xmlns:android="http://schemas.android.com/apk/res/android"><path android:fillColor="#1A237E" android:pathData="M0,0h108v108h-108z"/></vector>
           EOF
           cat > app/src/main/res/drawable/ic_launcher_foreground.xml <<EOF
           <vector android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108" xmlns:android="http://schemas.android.com/apk/res/android"><path android:fillColor="#E0E0E0" android:pathData="M54,26 A28,28 0 1,0 54,82 A28,28 0 1,0 54,26 M54,40 A14,14 0 1,1 54,68 A14,14 0 1,1 54,40"/></vector>
@@ -113,23 +114,26 @@ jobs:
           EOF
           cp app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml
 
-          # --- 7. Manifest ---
+          # --- 7. Manifest (Switch to CarAppService) ---
           cat > app/src/main/AndroidManifest.xml <<EOF
           <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="jp.kazukun.ambient">
               <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
               <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+              <uses-permission android:name="android.permission.INTERNET" />
               <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-              <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
-              <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
-              <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-              <uses-permission android:name="android.permission.WAKE_LOCK" />
+              <uses-permission android:name="androidx.car.app.ACCESS_SURFACE" /> 
 
               <application android:label="Ambient Flow" android:icon="@mipmap/ic_launcher" android:theme="@style/Theme.AppCompat.NoActionBar">
                   <meta-data android:name="com.google.android.gms.car.application" android:resource="@xml/automotive_app_desc" />
-                  <service android:name=".AmbientMediaService" android:exported="true" android:foregroundServiceType="mediaPlayback|location">
-                      <intent-filter><action android:name="android.media.browse.MediaBrowserService" /></intent-filter>
+                  
+                  <service android:name=".AmbientCarService" android:exported="true">
+                      <intent-filter>
+                          <action android:name="androidx.car.app.CarAppService" />
+                          <category android:name="androidx.car.app.category.NAVIGATION"/>
+                      </intent-filter>
                   </service>
+
                   <activity android:name=".MainActivity" android:exported="true">
                       <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
                   </activity>
@@ -137,251 +141,157 @@ jobs:
           </manifest>
           EOF
 
-          # --- 8. Kotlin: MainActivity ---
+          # --- 8. MainActivity (Permissions) ---
           cat > app/src/main/java/jp/kazukun/ambient/MainActivity.kt <<EOF
           package jp.kazukun.ambient
           import android.Manifest
           import android.content.pm.PackageManager
-          import android.os.Build
           import android.os.Bundle
           import androidx.appcompat.app.AppCompatActivity
           import androidx.core.app.ActivityCompat
           import androidx.core.content.ContextCompat
-          import android.content.Intent
 
           class MainActivity : AppCompatActivity() {
               override fun onCreate(savedInstanceState: Bundle?) {
                   super.onCreate(savedInstanceState)
-                  startServiceSafe()
-                  checkPermissions()
-              }
-              private fun checkPermissions() {
-                  val perms = mutableListOf(Manifest.permission.ACCESS_FINE_LOCATION)
-                  if (Build.VERSION.SDK_INT >= 33) perms.add(Manifest.permission.POST_NOTIFICATIONS)
-                  if (perms.any { ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED }) {
-                      ActivityCompat.requestPermissions(this, perms.toTypedArray(), 99)
+                  // ナビアプリは位置情報必須
+                  if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+                      ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.ACCESS_FINE_LOCATION), 99)
                   }
-              }
-              override fun onRequestPermissionsResult(rq: Int, p: Array<out String>, gr: IntArray) {
-                  super.onRequestPermissionsResult(rq, p, gr)
-                  startServiceSafe()
-              }
-              private fun startServiceSafe() {
-                  try { ContextCompat.startForegroundService(this, Intent(this, AmbientMediaService::class.java)) } catch (e: Exception) { }
               }
           }
           EOF
 
-          # --- 9. Kotlin: Service (Bug Fixed) ---
-          cat > app/src/main/java/jp/kazukun/ambient/AmbientMediaService.kt <<EOF
+          # --- 9. Car App Service & Screen (The New Engine) ---
+          cat > app/src/main/java/jp/kazukun/ambient/AmbientCarService.kt <<EOF
           package jp.kazukun.ambient
 
           import android.Manifest
-          import android.app.*
-          import android.content.Context
-          import android.content.Intent
           import android.content.pm.PackageManager
-          import android.content.pm.ServiceInfo
           import android.graphics.*
-          import android.location.*
-          import android.os.Build
-          import android.os.Bundle
-          import android.support.v4.media.MediaBrowserCompat
-          import android.support.v4.media.MediaDescriptionCompat
-          import android.support.v4.media.MediaMetadataCompat
-          import android.support.v4.media.session.MediaSessionCompat
-          import android.support.v4.media.session.PlaybackStateCompat
-          import androidx.core.app.NotificationCompat
+          import android.location.Location
+          import androidx.car.app.CarAppService
+          import androidx.car.app.CarContext
+          import androidx.car.app.Screen
+          import androidx.car.app.Session
+          import androidx.car.app.SurfaceCallback
+          import androidx.car.app.SurfaceContainer
+          import androidx.car.app.model.*
+          import androidx.car.app.navigation.model.NavigationTemplate
           import androidx.core.content.ContextCompat
-          import androidx.media.MediaBrowserServiceCompat
-          import androidx.media.app.NotificationCompat.MediaStyle
-          import kotlinx.coroutines.*
+          import androidx.lifecycle.DefaultLifecycleObserver
+          import androidx.lifecycle.LifecycleOwner
 
-          class AmbientMediaService : MediaBrowserServiceCompat(), LocationListener {
-              private lateinit var mediaSession: MediaSessionCompat
-              private var locationManager: LocationManager? = null
-              private val scope = CoroutineScope(Dispatchers.Default + Job())
-              
-              private val BITMAP_SIZE = 1024
-              private val bitmap = Bitmap.createBitmap(BITMAP_SIZE, BITMAP_SIZE, Bitmap.Config.ARGB_8888)
-              private val canvas = Canvas(bitmap)
-              
-              private val statusPaint = Paint()
-              private val peugeotPaint = Paint()
-              private val subPaint = Paint()
-              private val bgPaint = Paint()
+          class AmbientCarService : CarAppService() {
+              override fun createHostValidator() = HostValidator.ALLOW_ALL_HOSTS_VALIDATOR
+              override fun onCreateSession() = AmbientSession()
+          }
 
-              private lateinit var stayShader: Shader
-              private lateinit var flowShader: Shader
-              private lateinit var driveShader: Shader
-
-              private val CHANNEL_ID = "ambient_peugeot_id"
-              private val NOTIFICATION_ID = 999
-              private var lastSpeed = -1f
-
-              override fun onCreate() {
-                  super.onCreate()
-                  createNotificationChannel()
-                  initGraphics()
-
-                  mediaSession = MediaSessionCompat(this, "AmbientSession")
-                  mediaSession.isActive = true
-                  sessionToken = mediaSession.sessionToken
-                  
-                  mediaSession.setCallback(object : MediaSessionCompat.Callback() {
-                      // ★修正箇所: mediaSession.isActive と明記することでエラー解消
-                      override fun onPrepare() { mediaSession.isActive = true }
-                      override fun onStop() { stopSelf() }
-                  })
-
-                  // 再生ボタン消去
-                  mediaSession.setPlaybackState(PlaybackStateCompat.Builder()
-                      .setActions(0L)
-                      .setState(PlaybackStateCompat.STATE_PLAYING, 0L, 1.0f)
-                      .build())
-
-                  drawCanvas("READY", stayShader)
-                  setupLocation()
+          class AmbientSession : Session() {
+              override fun onCreateScreen(intent: android.content.Intent): Screen {
+                  return AmbientScreen(carContext)
               }
+          }
 
-              private fun initGraphics() {
-                  // ステータス (STAY/FLOW)
-                  statusPaint.apply {
+          class AmbientScreen(carContext: CarContext) : Screen(carContext), DefaultLifecycleObserver {
+              private var surface: Surface? = null
+              private val paint = Paint()
+              private val textPaint = Paint()
+              private val subPaint = Paint()
+              private var width = 0
+              private var height = 0
+              private var isRunning = false
+              
+              private var lastSpeed = -1f
+              private var currentGradient: Shader? = null
+
+              init {
+                  lifecycle.addObserver(this)
+                  initPaints()
+              }
+              
+              private fun initPaints() {
+                  textPaint.apply {
                       isAntiAlias = true
                       textAlign = Paint.Align.CENTER
                       color = Color.WHITE
-                      textSize = 100f
+                      textSize = 60f
                       typeface = Typeface.create(Typeface.SERIF, Typeface.BOLD)
-                      setShadowLayer(25f, 0f, 0f, Color.BLACK)
+                      setShadowLayer(20f, 0f, 0f, Color.BLACK)
                   }
-                  
-                  // PEUGEOTロゴ (プラチナシルバー・斜体)
-                  peugeotPaint.apply {
-                      isAntiAlias = true
-                      textAlign = Paint.Align.CENTER
-                      color = Color.parseColor("#E0E0E0")
-                      textSize = 110f
-                      typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD_ITALIC)
-                      setShadowLayer(15f, 0f, 0f, Color.parseColor("#50000000"))
-                      letterSpacing = 0.15f
-                  }
-
-                  // サブタイトル
                   subPaint.apply {
                       isAntiAlias = true
                       textAlign = Paint.Align.CENTER
-                      color = Color.LTGRAY
-                      textSize = 45f
-                      typeface = Typeface.DEFAULT
-                  }
-                  
-                  bgPaint.isAntiAlias = true
-
-                  // Peugeot Cockpit Colors
-                  stayShader = LinearGradient(0f, 0f, 0f, BITMAP_SIZE.toFloat(),
-                      Color.parseColor("#050510"), Color.parseColor("#283593"), Shader.TileMode.CLAMP)
-                  flowShader = LinearGradient(0f, 0f, 0f, BITMAP_SIZE.toFloat(),
-                      Color.parseColor("#00251a"), Color.parseColor("#00695c"), Shader.TileMode.CLAMP)
-                  driveShader = LinearGradient(0f, 0f, 0f, BITMAP_SIZE.toFloat(),
-                      Color.parseColor("#210000"), Color.parseColor("#b71c1c"), Shader.TileMode.CLAMP)
-              }
-
-              override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-                  val hasLoc = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
-                  try {
-                      val type = if (Build.VERSION.SDK_INT >= 34 && hasLoc) {
-                          ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION or ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
-                      } else {
-                          ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
-                      }
-                      
-                      val notif = buildNotification("Active")
-                      if (Build.VERSION.SDK_INT >= 29) startForeground(NOTIFICATION_ID, notif, type)
-                      else startForeground(NOTIFICATION_ID, notif)
-                  } catch (e: Exception) { }
-                  
-                  drawCanvas("Ambient", stayShader)
-                  return START_STICKY
-              }
-
-              override fun onGetRoot(pkg: String, uid: Int, root: Bundle?): BrowserRoot = BrowserRoot("ROOT", null)
-
-              override fun onLoadChildren(id: String, res: Result<MutableList<MediaBrowserCompat.MediaItem>>) {
-                  val mediaItems = mutableListOf<MediaBrowserCompat.MediaItem>()
-                  val desc = MediaDescriptionCompat.Builder().setMediaId("peugeot_1").setTitle("Peugeot Ambient").setSubtitle("i-Cockpit").build()
-                  mediaItems.add(MediaBrowserCompat.MediaItem(desc, MediaBrowserCompat.MediaItem.FLAG_PLAYABLE))
-                  res.sendResult(mediaItems)
-              }
-
-              private fun drawCanvas(text: String, shader: Shader) {
-                  scope.launch {
-                      bgPaint.shader = shader
-                      canvas.drawRect(0f, 0f, BITMAP_SIZE.toFloat(), BITMAP_SIZE.toFloat(), bgPaint)
-                      
-                      val cx = (BITMAP_SIZE / 2).toFloat()
-                      val cy = (BITMAP_SIZE / 2).toFloat()
-                      
-                      canvas.drawText(text, cx, cy - 120f, statusPaint)
-                      canvas.drawText("PEUGEOT", cx, cy + 30f, peugeotPaint)
-                      canvas.drawText("Driving Experience", cx, cy + 150f, subPaint)
-
-                      withContext(Dispatchers.Main) {
-                          if (!mediaSession.isActive) return@withContext
-                          val metadata = MediaMetadataCompat.Builder()
-                              .putString(MediaMetadataCompat.METADATA_KEY_TITLE, text)
-                              .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, "PEUGEOT")
-                              .putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, bitmap)
-                              .putBitmap(MediaMetadataCompat.METADATA_KEY_DISPLAY_ICON, bitmap)
-                              .build()
-                          mediaSession.setMetadata(metadata)
-                      }
+                      color = Color.parseColor("#E0E0E0")
+                      textSize = 40f
+                      typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD_ITALIC)
                   }
               }
 
-              override fun onLocationChanged(location: Location) {
-                  val speed = location.speed * 3.6f
-                  if (Math.abs(speed - lastSpeed) > 2.0) {
-                      lastSpeed = speed
-                      if (speed < 5) drawCanvas("STAY", stayShader)
-                      else if (speed < 50) drawCanvas("FLOW", flowShader)
-                      else drawCanvas("DRIVE", driveShader)
-                  }
-              }
-
-              private fun buildNotification(text: String): Notification {
-                   return NotificationCompat.Builder(this, CHANNEL_ID)
-                      .setContentTitle("Peugeot Ambient")
-                      .setContentText(text)
-                      .setSmallIcon(R.drawable.ic_launcher_foreground)
-                      .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-                      .setStyle(MediaStyle().setMediaSession(mediaSession.sessionToken))
-                      .setOngoing(true)
+              override fun onGetTemplate(): Template {
+                  // ★ナビゲーションテンプレートを使用（地図の代わりにCanvasを描画）
+                  return NavigationTemplate.Builder()
+                      .setActionStrip(ActionStrip.Builder()
+                          .addAction(Action.Builder().setTitle("Mode").setOnClickListener { 
+                              // ダミーボタン: 押すとログが出るだけ（機能拡張用）
+                              carContext.requestPermissions(listOf(Manifest.permission.ACCESS_FINE_LOCATION)) { _,_ -> }
+                          }.build())
+                          .build())
                       .build()
               }
 
-              private fun createNotificationChannel() {
-                  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                      val channel = NotificationChannel(CHANNEL_ID, "Ambient Status", NotificationManager.IMPORTANCE_LOW)
-                      val mgr = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-                      mgr.createNotificationChannel(channel)
+              private val surfaceCallback = object : SurfaceCallback {
+                  override fun onSurfaceAvailable(surfaceContainer: SurfaceContainer) {
+                      surface = surfaceContainer.surface
+                      width = surfaceContainer.width
+                      height = surfaceContainer.height
+                      isRunning = true
+                      drawLoop()
+                  }
+                  override fun onSurfaceDestroyed(surfaceContainer: SurfaceContainer) {
+                      surface = null
+                      isRunning = false
                   }
               }
 
-              private fun setupLocation() {
-                  if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
-                      locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
-                      try { locationManager?.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1500, 2f, this) } catch (e: Exception) { }
-                  }
+              private fun drawLoop() {
+                  Thread {
+                      while (isRunning && surface != null) {
+                          val s = surface ?: break
+                          try {
+                              val canvas = s.lockCanvas(null)
+                              if (canvas != null) {
+                                  drawFrame(canvas)
+                                  s.unlockCanvasAndPost(canvas)
+                              }
+                          } catch (e: Exception) { e.printStackTrace() }
+                          Thread.sleep(100) // 10FPS
+                      }
+                  }.start()
               }
 
-              override fun onDestroy() {
-                  super.onDestroy()
-                  locationManager?.removeUpdates(this)
-                  mediaSession.release()
+              private fun drawFrame(canvas: Canvas) {
+                  // 背景（グラデーション）
+                  if (currentGradient == null || width > 0) {
+                      // 初期グラデーション (Stay)
+                      currentGradient = LinearGradient(0f, 0f, 0f, height.toFloat(),
+                          Color.parseColor("#050510"), Color.parseColor("#1A237E"), Shader.TileMode.CLAMP)
+                  }
+                  
+                  paint.shader = currentGradient
+                  canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paint)
+
+                  // 文字描画
+                  val cx = width / 2f
+                  val cy = height / 2f
+                  canvas.drawText("PEUGEOT", cx, cy, textPaint)
+                  canvas.drawText("Ambient Flow", cx, cy + 80f, subPaint)
               }
-              override fun onStatusChanged(p: String?, s: Int, e: Bundle?) {}
-              override fun onProviderEnabled(p: String) {}
-              override fun onProviderDisabled(p: String) {}
+              
+              override fun onCreate(owner: LifecycleOwner) {
+                  // ナビアプリとして画面を描画するコールバックを登録
+                  carContext.getCarService(androidx.car.app.AppManager::class.java).setSurfaceCallback(surfaceCallback)
+              }
           }
           EOF
 
@@ -394,5 +304,5 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: AmbientFlow-Perfect-APK
+          name: AmbientFlow-Navigation-APK
           path: app/build/outputs/apk/debug/app-debug.apk
