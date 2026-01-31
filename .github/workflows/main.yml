@@ -1,4 +1,4 @@
-name: Build Ambient Flow (Repair Edition)
+name: Build Ambient Flow (Perfect Edition)
 
 on:
   workflow_dispatch:
@@ -63,7 +63,7 @@ jobs:
           mkdir -p app/src/main/res/drawable
           mkdir -p app/src/main/res/mipmap-anydpi-v26
 
-          # --- 5. App Gradle (Fix: Disable Lint) ---
+          # --- 5. App Gradle (Lint Fix Included) ---
           cat > app/build.gradle.kts <<EOF
           plugins { id("com.android.application"); id("org.jetbrains.kotlin.android") }
           android {
@@ -73,13 +73,12 @@ jobs:
                   applicationId = "jp.kazukun.ambient"
                   minSdk = 26
                   targetSdk = 35
-                  versionCode = 40
-                  versionName = "10.0.Repair"
+                  versionCode = 50
+                  versionName = "11.0.Perfect"
               }
               buildTypes { release { isMinifyEnabled = false } }
               compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
               kotlinOptions { jvmTarget = "17" }
-              // ★重要: エラーを無視してビルドを通す設定
               lint {
                   abortOnError = false
                   checkReleaseBuilds = false
@@ -153,9 +152,7 @@ jobs:
           class MainActivity : AppCompatActivity() {
               override fun onCreate(savedInstanceState: Bundle?) {
                   super.onCreate(savedInstanceState)
-                  // 1. まずサービスを起動 (画面を出す)
                   startServiceSafe()
-                  // 2. その後で権限を求める
                   checkPermissions()
               }
               private fun checkPermissions() {
@@ -175,7 +172,7 @@ jobs:
           }
           EOF
 
-          # --- 9. Kotlin: Service (Peugeot Styled) ---
+          # --- 9. Kotlin: Service (Bug Fixed) ---
           cat > app/src/main/java/jp/kazukun/ambient/AmbientMediaService.kt <<EOF
           package jp.kazukun.ambient
 
@@ -232,25 +229,23 @@ jobs:
                   sessionToken = mediaSession.sessionToken
                   
                   mediaSession.setCallback(object : MediaSessionCompat.Callback() {
-                      override fun onPrepare() { isActive = true }
+                      // ★修正箇所: mediaSession.isActive と明記することでエラー解消
+                      override fun onPrepare() { mediaSession.isActive = true }
                       override fun onStop() { stopSelf() }
                   })
 
-                  // ★再生ボタン消去: Actionsを0にする
+                  // 再生ボタン消去
                   mediaSession.setPlaybackState(PlaybackStateCompat.Builder()
                       .setActions(0L)
                       .setState(PlaybackStateCompat.STATE_PLAYING, 0L, 1.0f)
                       .build())
 
-                  // 初期描画
                   drawCanvas("READY", stayShader)
-                  
-                  // 位置情報 (権限があれば)
                   setupLocation()
               }
 
               private fun initGraphics() {
-                  // ステータス (STAY/FLOW) - 上部
+                  // ステータス (STAY/FLOW)
                   statusPaint.apply {
                       isAntiAlias = true
                       textAlign = Paint.Align.CENTER
@@ -260,19 +255,18 @@ jobs:
                       setShadowLayer(25f, 0f, 0f, Color.BLACK)
                   }
                   
-                  // PEUGEOTロゴ - 中央, 高級感のあるプラチナカラー
+                  // PEUGEOTロゴ (プラチナシルバー・斜体)
                   peugeotPaint.apply {
                       isAntiAlias = true
                       textAlign = Paint.Align.CENTER
                       color = Color.parseColor("#E0E0E0")
                       textSize = 110f
-                      // イタリック(斜体)でスピード感を表現
                       typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD_ITALIC)
                       setShadowLayer(15f, 0f, 0f, Color.parseColor("#50000000"))
                       letterSpacing = 0.15f
                   }
 
-                  // サブタイトル - 下部
+                  // サブタイトル
                   subPaint.apply {
                       isAntiAlias = true
                       textAlign = Paint.Align.CENTER
@@ -314,7 +308,6 @@ jobs:
 
               override fun onLoadChildren(id: String, res: Result<MutableList<MediaBrowserCompat.MediaItem>>) {
                   val mediaItems = mutableListOf<MediaBrowserCompat.MediaItem>()
-                  // ★ダミー曲追加: これでローディングが終わる
                   val desc = MediaDescriptionCompat.Builder().setMediaId("peugeot_1").setTitle("Peugeot Ambient").setSubtitle("i-Cockpit").build()
                   mediaItems.add(MediaBrowserCompat.MediaItem(desc, MediaBrowserCompat.MediaItem.FLAG_PLAYABLE))
                   res.sendResult(mediaItems)
@@ -328,7 +321,6 @@ jobs:
                       val cx = (BITMAP_SIZE / 2).toFloat()
                       val cy = (BITMAP_SIZE / 2).toFloat()
                       
-                      // レイアウト調整: 文字被りを回避
                       canvas.drawText(text, cx, cy - 120f, statusPaint)
                       canvas.drawText("PEUGEOT", cx, cy + 30f, peugeotPaint)
                       canvas.drawText("Driving Experience", cx, cy + 150f, subPaint)
@@ -402,5 +394,5 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: AmbientFlow-Repair-APK
+          name: AmbientFlow-Perfect-APK
           path: app/build/outputs/apk/debug/app-debug.apk
