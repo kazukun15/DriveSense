@@ -1,4 +1,4 @@
-name: Build Ambient Flow (Ultimate Stable)
+name: Build Ambient Flow (Fixed Root)
 
 on:
   workflow_dispatch:
@@ -74,8 +74,8 @@ jobs:
                   applicationId = "jp.kazukun.ambient"
                   minSdk = 26
                   targetSdk = 35
-                  versionCode = 9000
-                  versionName = "900.0.UltimateStable"
+                  versionCode = 9100
+                  versionName = "910.0.FixedRoot"
               }
               buildTypes { release { isMinifyEnabled = false } }
               compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
@@ -122,7 +122,7 @@ jobs:
           EOF
           cp app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml
 
-          # --- 7. Manifest (Enhanced for GPS Stability) ---
+          # --- 7. Manifest ---
           cat > app/src/main/AndroidManifest.xml <<EOF
           <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
@@ -153,7 +153,7 @@ jobs:
           </manifest>
           EOF
 
-          # --- 8. MainActivity (Modern Designer UI) ---
+          # --- 8. MainActivity (Smartphone UI) ---
           cat > app/src/main/java/jp/kazukun/ambient/MainActivity.kt <<EOF
           package jp.kazukun.ambient
 
@@ -209,16 +209,12 @@ jobs:
               
               private fun setupUI() {
                   rootLayout = FrameLayout(this).apply { setBackgroundColor(Color.BLACK) }
-                  
-                  // 背景: AAから同期されたグラデーションのみ表示
                   gradientView = ImageView(this).apply { scaleType = ImageView.ScaleType.FIT_XY }
                   rootLayout.addView(gradientView, FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
                   
-                  // 下部の操作パネル
                   val panel = LinearLayout(this).apply {
                       orientation = LinearLayout.HORIZONTAL
                       gravity = Gravity.CENTER
-                      // ガラス風の半透明背景
                       background = GradientDrawable().apply {
                           setColor(Color.parseColor("#80000000")) 
                           cornerRadius = 50f
@@ -284,7 +280,7 @@ jobs:
           }
           EOF
 
-          # --- 9. AmbientMediaService (Optimized 400px & Safe GPS) ---
+          # --- 9. AmbientMediaService (Fix Build Error) ---
           cat > app/src/main/java/jp/kazukun/ambient/AmbientMediaService.kt <<EOF
           package jp.kazukun.ambient
 
@@ -313,7 +309,6 @@ jobs:
           class AmbientMediaService : MediaBrowserServiceCompat(), LocationListener {
               private lateinit var mediaSession: MediaSessionCompat
               
-              // ★修正: 400px (640KB) でクラッシュ回避を確実に
               private val BITMAP_SIZE = 400
               private val bitmap = Bitmap.createBitmap(BITMAP_SIZE, BITMAP_SIZE, Bitmap.Config.ARGB_8888)
               private val canvas = Canvas(bitmap)
@@ -322,7 +317,6 @@ jobs:
               private val subPaint = Paint()
               private val bgPaint = Paint()
               
-              // -1: AUTO(Speed), -2: AUTO(Time 5min), 0-7: Manual
               private var currentMode = 0
               private var displayColorIndex = 0
               
@@ -338,7 +332,6 @@ jobs:
               private var locationManager: LocationManager? = null
               private val handler = Handler(Looper.getMainLooper())
               
-              // 5分(300000ms)タイマー
               private val timeAutoRunnable = object : Runnable {
                   override fun run() {
                       if (currentMode == -2) {
@@ -379,10 +372,10 @@ jobs:
                           }
                           if (action == "ACTION_AUTO_MODE") {
                               if (currentMode == -1) {
-                                  currentMode = -2 // Speed -> Time
+                                  currentMode = -2
                                   handler.post(timeAutoRunnable) 
                               } else {
-                                  currentMode = -1 // Time/Manual -> Speed
+                                  currentMode = -1
                                   handler.removeCallbacks(timeAutoRunnable)
                               }
                               updateDisplay()
@@ -424,8 +417,6 @@ jobs:
               override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
                   try {
                       val notif = buildNotification("Active")
-                      
-                      // ★安全対策: 権限がある場合のみ location type を追加
                       var type = ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
                       if (Build.VERSION.SDK_INT >= 34 && 
                           ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
@@ -527,6 +518,25 @@ jobs:
                   }
               }
 
+              // ★ここが修正ポイント: 親クラスのシグネチャに厳密に一致させる (nullable)
+              override fun onGetRoot(
+                  clientPackageName: String,
+                  clientUid: Int,
+                  rootHints: Bundle?
+              ): BrowserRoot? {
+                  return BrowserRoot("ROOT", null)
+              }
+
+              override fun onLoadChildren(
+                  parentId: String,
+                  result: Result<MutableList<MediaBrowserCompat.MediaItem>>
+              ) {
+                  val mediaItems = mutableListOf<MediaBrowserCompat.MediaItem>()
+                  val desc = MediaDescriptionCompat.Builder().setMediaId("p_item").setTitle("Peugeot Ambient").setSubtitle("Ready").build()
+                  mediaItems.add(MediaBrowserCompat.MediaItem(desc, MediaBrowserCompat.MediaItem.FLAG_PLAYABLE))
+                  result.sendResult(mediaItems)
+              }
+
               private fun buildNotification(text: String): Notification {
                    val intent = Intent(this, MainActivity::class.java)
                    val pendingIntent = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE)
@@ -571,5 +581,5 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: AmbientFlow-UltimateStable-APK
+          name: AmbientFlow-FixedRoot-APK
           path: app/build/outputs/apk/debug/app-debug.apk
