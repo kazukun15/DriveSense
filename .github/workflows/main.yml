@@ -1,4 +1,4 @@
-name: Build Ambient Flow (POI-Hybrid)
+name: Build Ambient Flow (Smart Dashboard)
 
 on:
   workflow_dispatch:
@@ -74,8 +74,8 @@ jobs:
                   applicationId = "jp.kazukun.ambient"
                   minSdk = 26
                   targetSdk = 35
-                  versionCode = 4000
-                  versionName = "400.0.POIHybrid"
+                  versionCode = 5000
+                  versionName = "500.0.SmartDash"
               }
               buildTypes { release { isMinifyEnabled = false } }
               compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
@@ -95,24 +95,33 @@ jobs:
           <resources><string name="app_name">Ambient Flow</string></resources>
           EOF
           
-          # ★ここが重要: "poi" (場所) カテゴリに変更
+          # ★戦略変更: "parking" (駐車場) カテゴリとして申請
+          # これはNavigationより緩く、Mediaのように音楽を止めない
           cat > app/src/main/res/xml/automotive_app_desc.xml <<EOF
           <automotiveApp>
-              <uses name="poi"/>
+              <uses name="parking"/>
           </automotiveApp>
           EOF
 
           # --- Icons ---
+          # 1. Color Palette (Luxury)
           cat > app/src/main/res/drawable/ic_palette_luxury.xml <<EOF
-          <vector xmlns:android="http://schemas.android.com/apk/res/android"
-              android:width="24dp"
-              android:height="24dp"
-              android:viewportWidth="24"
-              android:viewportHeight="24">
-              <path
-                  android:fillColor="#E0E0E0"
-                  android:pathData="M12,3c-4.97,0 -9,4.03 -9,9s4.03,9 9,9c0.83,0 1.5,-0.67 1.5,-1.5 0,-0.39 -0.15,-0.74 -0.39,-1.01 -0.23,-0.26 -0.38,-0.61 -0.38,-0.99 0,-0.83 0.67,-1.5 1.5,-1.5H16c2.76,0 5,-2.24 5,-5 0,-4.42 -4.03,-8 -9,-8zM6.5,12c-0.83,0 -1.5,-0.67 -1.5,-1.5S5.67,9 6.5,9 8,9.67 8,10.5 7.33,12 6.5,12zM9.5,8C8.67,8 8,7.33 8,6.5S8.67,5 9.5,5s1.5,0.67 1.5,1.5S10.33,8 9.5,8zM14.5,8c-0.83,0 -1.5,-0.67 -1.5,-1.5S13.67,5 14.5,5s1.5,0.67 1.5,1.5S15.33,8 14.5,8zM17.5,12c-0.83,0 -1.5,-0.67 -1.5,-1.5S16.67,9 17.5,9 19,9.67 19,10.5 18.33,12 17.5,12z"/>
-          </vector>
+          <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24"><path android:fillColor="#E0E0E0" android:pathData="M12,3c-4.97,0 -9,4.03 -9,9s4.03,9 9,9c0.83,0 1.5,-0.67 1.5,-1.5 0,-0.39 -0.15,-0.74 -0.39,-1.01 -0.23,-0.26 -0.38,-0.61 -0.38,-0.99 0,-0.83 0.67,-1.5 1.5,-1.5H16c2.76,0 5,-2.24 5,-5 0,-4.42 -4.03,-8 -9,-8zM6.5,12c-0.83,0 -1.5,-0.67 -1.5,-1.5S5.67,9 6.5,9 8,9.67 8,10.5 7.33,12 6.5,12z"/></vector>
+          EOF
+          
+          # 2. Previous
+          cat > app/src/main/res/drawable/ic_skip_previous.xml <<EOF
+          <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24"><path android:fillColor="#FFFFFF" android:pathData="M6,6h2v12H6zm3.5,6l8.5,6V6z"/></vector>
+          EOF
+
+          # 3. Play/Pause
+          cat > app/src/main/res/drawable/ic_play_pause.xml <<EOF
+          <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24"><path android:fillColor="#FFFFFF" android:pathData="M8,5v14l11,-7z"/></vector>
+          EOF
+
+          # 4. Next
+          cat > app/src/main/res/drawable/ic_skip_next.xml <<EOF
+          <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24"><path android:fillColor="#FFFFFF" android:pathData="M6,18l8.5,-6L6,6v12zM16,6v12h2V6h-2z"/></vector>
           EOF
 
           cat > app/src/main/res/drawable/ic_launcher_background.xml <<EOF
@@ -126,13 +135,14 @@ jobs:
           EOF
           cp app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml
 
-          # --- 7. Manifest (POI Category) ---
+          # --- 7. Manifest (PARKING Category) ---
           cat > app/src/main/AndroidManifest.xml <<EOF
           <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
               <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
               <uses-permission android:name="android.permission.INTERNET" />
               <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+              
               <application android:label="Ambient Flow" android:icon="@mipmap/ic_launcher" android:theme="@style/Theme.AppCompat.NoActionBar">
                   <meta-data android:name="com.google.android.gms.car.application" android:resource="@xml/automotive_app_desc" />
                   <meta-data android:name="androidx.car.app.minCarApiLevel" android:value="1" />
@@ -140,7 +150,7 @@ jobs:
                   <service android:name=".AmbientCarService" android:exported="true">
                       <intent-filter>
                           <action android:name="androidx.car.app.CarAppService" />
-                          <category android:name="androidx.car.app.category.POI"/>
+                          <category android:name="androidx.car.app.category.PARKING"/>
                           <category android:name="android.intent.category.DEFAULT" />
                       </intent-filter>
                   </service>
@@ -155,7 +165,7 @@ jobs:
           </manifest>
           EOF
 
-          # --- 8. MainActivity (Permission Request) ---
+          # --- 8. MainActivity ---
           cat > app/src/main/java/jp/kazukun/ambient/MainActivity.kt <<EOF
           package jp.kazukun.ambient
           import android.Manifest
@@ -175,7 +185,7 @@ jobs:
           }
           EOF
 
-          # --- 9. Car Service (POI with Bitmap Generation) ---
+          # --- 9. Car Service (Remote Control Logic) ---
           cat > app/src/main/java/jp/kazukun/ambient/AmbientCarService.kt <<EOF
           package jp.kazukun.ambient
 
@@ -184,188 +194,9 @@ jobs:
           import android.content.pm.PackageManager
           import android.graphics.*
           import android.location.*
-          import androidx.car.app.CarAppService
-          import androidx.car.app.CarContext
-          import androidx.car.app.Screen
-          import androidx.car.app.Session
-          import androidx.car.app.model.*
-          import androidx.car.app.validation.HostValidator
-          import androidx.core.content.ContextCompat
-          import androidx.core.graphics.drawable.IconCompat
-          import androidx.lifecycle.DefaultLifecycleObserver
-          import androidx.lifecycle.LifecycleOwner
-
-          class AmbientCarService : CarAppService() {
-              override fun createHostValidator() = HostValidator.ALLOW_ALL_HOSTS_VALIDATOR
-              override fun onCreateSession() = AmbientSession()
-          }
-
-          class AmbientSession : Session() {
-              override fun onCreateScreen(intent: android.content.Intent): Screen {
-                  return AmbientScreen(carContext)
-              }
-          }
-
-          class AmbientScreen(carContext: CarContext) : Screen(carContext), DefaultLifecycleObserver, LocationListener {
-              private val BITMAP_WIDTH = 800
-              private val BITMAP_HEIGHT = 600
-              
-              private val textPaint = Paint()
-              private val peugeotPaint = Paint()
-              private val subPaint = Paint()
-              private val bgPaint = Paint()
-              private val paint = Paint()
-
-              private var locationManager: LocationManager? = null
-              
-              // -1: AUTO, 0-7: Manual
-              private var currentMode = -1
-              private val modeNames = listOf(
-                  "STAY", "FLOW", "DRIVE", "LOUNGE", 
-                  "LUXURY", "ICE", "SPORT", "ECO"
-              )
-              
-              init {
-                  lifecycle.addObserver(this)
-                  initPaints()
-              }
-              
-              private fun initPaints() {
-                  textPaint.apply {
-                      isAntiAlias = true
-                      textAlign = Paint.Align.CENTER
-                      color = Color.WHITE
-                      textSize = 40f
-                      typeface = Typeface.create(Typeface.SERIF, Typeface.BOLD)
-                      setShadowLayer(10f, 0f, 0f, Color.BLACK)
-                  }
-                  peugeotPaint.apply {
-                      isAntiAlias = true
-                      textAlign = Paint.Align.CENTER
-                      color = Color.parseColor("#E5E4E2")
-                      textSize = 50f
-                      typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD_ITALIC)
-                      setShadowLayer(10f, 0f, 0f, Color.parseColor("#60000000"))
-                  }
-                  subPaint.apply {
-                      isAntiAlias = true
-                      textAlign = Paint.Align.CENTER
-                      color = Color.parseColor("#B0BEC5")
-                      textSize = 30f
-                      typeface = Typeface.DEFAULT
-                  }
-                  bgPaint.isAntiAlias = true
-              }
-
-              override fun onCreate(owner: LifecycleOwner) {
-                  setupLocation()
-              }
-              
-              private fun setupLocation() {
-                   if (ContextCompat.checkSelfPermission(carContext, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
-                      locationManager = carContext.getSystemService(Context.LOCATION_SERVICE) as LocationManager
-                      try {
-                          locationManager?.requestLocationUpdates(LocationManager.GPS_PROVIDER, 2000, 2f, this)
-                      } catch (e: Exception) { e.printStackTrace() }
-                  }
-              }
-              
-              override fun onLocationChanged(location: Location) {
-                  if (currentMode == -1) {
-                      val speedKmh = location.speed * 3.6f
-                      val newMode = when {
-                          speedKmh < 5  -> 0 // STAY
-                          speedKmh < 30 -> 7 // ECO
-                          speedKmh < 50 -> 1 // FLOW
-                          speedKmh < 70 -> 4 // LUXURY
-                          speedKmh < 90 -> 6 // SPORT
-                          else          -> 2 // DRIVE
-                      }
-                      // 画面更新
-                      invalidate()
-                  }
-              }
-
-              override fun onGetTemplate(): Template {
-                  // Bitmapを生成して画像として表示する (PaneTemplate)
-                  val bitmap = generateBitmap()
-                  val carIcon = CarIcon.Builder(IconCompat.createWithBitmap(bitmap)).build()
-
-                  // 背景画像として設定
-                  val pane = Pane.Builder()
-                      .setImage(carIcon)
-                      .addAction(
-                          Action.Builder()
-                              .setTitle("Change Color")
-                              .setOnClickListener { 
-                                  if (currentMode == 7) currentMode = -1 else currentMode++
-                                  invalidate()
-                              }
-                              .build()
-                      )
-                      .build()
-
-                  return PaneTemplate.Builder(pane)
-                      .setTitle("Peugeot Ambient")
-                      .build()
-              }
-
-              private fun generateBitmap(): Bitmap {
-                  val bmp = Bitmap.createBitmap(BITMAP_WIDTH, BITMAP_HEIGHT, Bitmap.Config.ARGB_8888)
-                  val canvas = Canvas(bmp)
-
-                  // モード決定
-                  val displayMode = if (currentMode == -1) {
-                      // 直前の速度判定による色をデフォルト0として計算(簡易)
-                      // 本来はLocationで計算した値を保持すべきだが、ここでは簡易的に0にするか
-                      // locationが来ていない場合は0
-                      0 
-                      // 注: onLocationChangedでinvalidateを呼んでいるので、
-                      // 実際には速度に応じた色にしたいが、onLocationChanged内で
-                      // 保持した「計算済みモード」がないため、今回は「AUTO時は青」になってしまう。
-                      // ★修正: Locationの結果を保持する変数を追加しましょう。
-                  } else {
-                      currentMode
-                  }
-                  
-                  // リファクタリング: AUTO時の色計算をここでもやるか、変数を分ける
-                  // 簡略化のため、LocationListener内で変数を更新する方式にはしていないので
-                  // ここでは「AUTO時は色が揺らぐ」演出を入れるか、
-                  // もしくは前回のMedia版のようにロジックを統合する
-                  
-                  // ★修正ロジック:
-                  // 描画ループではなくTemplate更新なので、
-                  // 「現在の色」を決める変数が1つあればよい。
-                  // LocationListenerで currentMode が -1 のときだけ、
-                  // 別の変数 autoDerivedMode を更新し、描画時はそれを使う。
-                  
-                  // ...という修正をコード上で行います↓
-                  
-                  // ここは仮実装。下で修正版ロジック適用
-                  return bmp
-              }
-
-              // LocationListener インターフェース実装
-              override fun onStatusChanged(p: String?, s: Int, e: Bundle?) {}
-              override fun onProviderEnabled(p: String) {}
-              override fun onProviderDisabled(p: String) {}
-              
-              override fun onDestroy(owner: LifecycleOwner) {
-                  locationManager?.removeUpdates(this)
-              }
-          }
-          EOF
-          
-          # ★AmbientCarService.kt を再生成（ロジック修正版）
-          cat > app/src/main/java/jp/kazukun/ambient/AmbientCarService.kt <<EOF
-          package jp.kazukun.ambient
-
-          import android.Manifest
-          import android.content.Context
-          import android.content.pm.PackageManager
-          import android.graphics.*
-          import android.location.*
+          import android.media.AudioManager
           import android.os.Bundle
+          import android.view.KeyEvent
           import androidx.car.app.CarAppService
           import androidx.car.app.CarContext
           import androidx.car.app.Screen
@@ -398,10 +229,10 @@ jobs:
               private val bgPaint = Paint()
 
               private var locationManager: LocationManager? = null
+              private var audioManager: AudioManager? = null
               
               // -1: AUTO, 0-7: Manual
               private var currentMode = -1
-              // AUTOモードの時の現在色(速度連動)
               private var autoDerivedMode = 0
               
               private val modeNames = listOf(
@@ -412,6 +243,7 @@ jobs:
               init {
                   lifecycle.addObserver(this)
                   initPaints()
+                  audioManager = carContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
               }
               
               private fun initPaints() {
@@ -465,22 +297,39 @@ jobs:
                       else          -> 2 // DRIVE
                   }
                   
-                  // AUTOモードで、色が切り替わる場合のみ更新
                   if (currentMode == -1 && newAutoMode != autoDerivedMode) {
                       autoDerivedMode = newAutoMode
-                      invalidate() // 画面再生成
+                      invalidate()
                   }
               }
 
+              // ★音楽操作機能（リモコン）
+              private fun sendMediaKey(keyCode: Int) {
+                  try {
+                      audioManager?.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, keyCode))
+                      audioManager?.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_UP, keyCode))
+                  } catch (e: Exception) { e.printStackTrace() }
+              }
+
               override fun onGetTemplate(): Template {
+                  // Bitmap生成
                   val bitmap = generateBitmap()
                   val carIcon = CarIcon.Builder(IconCompat.createWithBitmap(bitmap)).build()
 
+                  // ★音楽操作ボタン (ActionStrip)
+                  val actionStrip = ActionStrip.Builder()
+                      .addAction(Action.Builder().setIcon(CarIcon.Builder(IconCompat.createWithResource(carContext, R.drawable.ic_skip_previous)).build()).setOnClickListener { sendMediaKey(KeyEvent.KEYCODE_MEDIA_PREVIOUS) }.build())
+                      .addAction(Action.Builder().setIcon(CarIcon.Builder(IconCompat.createWithResource(carContext, R.drawable.ic_play_pause)).build()).setOnClickListener { sendMediaKey(KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE) }.build())
+                      .addAction(Action.Builder().setIcon(CarIcon.Builder(IconCompat.createWithResource(carContext, R.drawable.ic_skip_next)).build()).setOnClickListener { sendMediaKey(KeyEvent.KEYCODE_MEDIA_NEXT) }.build())
+                      .build()
+
+                  // 背景画像パネル
                   val pane = Pane.Builder()
                       .setImage(carIcon)
                       .addAction(
                           Action.Builder()
-                              .setTitle("Change Color")
+                              .setTitle("Color") // 色変更ボタン
+                              .setIcon(CarIcon.Builder(IconCompat.createWithResource(carContext, R.drawable.ic_palette_luxury)).build())
                               .setOnClickListener { 
                                   if (currentMode == 7) currentMode = -1 else currentMode++
                                   invalidate()
@@ -490,7 +339,8 @@ jobs:
                       .build()
 
                   return PaneTemplate.Builder(pane)
-                      .setTitle("Peugeot Ambient")
+                      .setTitle("Ambient Dashboard")
+                      .setActionStrip(actionStrip) // 上部に音楽操作ボタンを配置
                       .build()
               }
 
@@ -498,7 +348,6 @@ jobs:
                   val bmp = Bitmap.createBitmap(BITMAP_WIDTH, BITMAP_HEIGHT, Bitmap.Config.ARGB_8888)
                   val canvas = Canvas(bmp)
 
-                  // 表示する色IDを決定
                   val displayMode = if (currentMode == -1) autoDerivedMode else currentMode
                   val modeText = if (currentMode == -1) "AUTO (" + modeNames[displayMode] + ")" else modeNames[displayMode]
 
@@ -546,5 +395,5 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: AmbientFlow-POIHybrid-APK
+          name: AmbientFlow-SmartDash-APK
           path: app/build/outputs/apk/debug/app-debug.apk
