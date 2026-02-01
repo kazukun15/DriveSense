@@ -1,4 +1,4 @@
-name: Build Ambient Flow (IoT-Fix)
+name: Build Ambient Flow (IoT-Final)
 
 on:
   workflow_dispatch:
@@ -64,7 +64,7 @@ jobs:
           mkdir -p app/src/main/res/drawable
           mkdir -p app/src/main/res/mipmap-anydpi-v26
 
-          # --- 5. App Gradle (★Fix: Added Lifecycle Dependencies) ---
+          # --- 5. App Gradle ---
           cat > app/build.gradle.kts <<EOF
           plugins { id("com.android.application"); id("org.jetbrains.kotlin.android") }
           android {
@@ -74,8 +74,8 @@ jobs:
                   applicationId = "jp.kazukun.ambient"
                   minSdk = 26
                   targetSdk = 35
-                  versionCode = 9600
-                  versionName = "960.0.IoTFix"
+                  versionCode = 9800
+                  versionName = "980.0.IoTFinal"
               }
               buildTypes { release { isMinifyEnabled = false } }
               compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
@@ -87,7 +87,7 @@ jobs:
               implementation("androidx.appcompat:appcompat:1.6.1")
               implementation("androidx.car.app:app:1.4.0")
               implementation("com.google.android.gms:play-services-location:21.0.1")
-              // ★追加: これがないとLiveDataやObserverでエラーになる
+              // Lifecycle libraries required for StateManager and Observers
               implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.6.1")
               implementation("androidx.lifecycle:lifecycle-livedata-ktx:2.6.1")
               implementation("androidx.lifecycle:lifecycle-common-java8:2.6.1")
@@ -99,7 +99,7 @@ jobs:
           <resources><string name="app_name">Ambient Flow</string></resources>
           EOF
           
-          # IoT Category
+          # IoT Category configuration
           cat > app/src/main/res/xml/automotive_app_desc.xml <<EOF
           <automotiveApp>
               <uses name="iot"/>
@@ -115,7 +115,6 @@ jobs:
           <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24"><path android:fillColor="#E0E0E0" android:pathData="M12,2C6.48,2 2,6.48 2,12s4.48,10 10,10 10,-4.48 10,-10S17.52,2 12,2zm0,18c-4.41,0 -8,-3.59 -8,-8s3.59,-8 8,-8 8,3.59 8,8 -3.59,8 -8,8zm-1,-13h2v6h-2zm0,8h2v2h-2z"/></vector>
           EOF
 
-          # Music Icons
           cat > app/src/main/res/drawable/ic_skip_previous.xml <<EOF
           <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24"><path android:fillColor="#FFFFFF" android:pathData="M6,6h2v12H6zm3.5,6l8.5,6V6z"/></vector>
           EOF
@@ -293,7 +292,7 @@ jobs:
           }
           EOF
 
-          # --- 10. AmbientCarService (IoT Mode + Music Control) ---
+          # --- 10. AmbientCarService (Full Fix) ---
           cat > app/src/main/java/jp/kazukun/ambient/AmbientCarService.kt <<EOF
           package jp.kazukun.ambient
 
@@ -303,6 +302,7 @@ jobs:
           import android.graphics.*
           import android.location.*
           import android.media.AudioManager
+          import android.os.Bundle // ★修正: これが前回抜けていた
           import android.os.Handler
           import android.os.Looper
           import android.view.KeyEvent
@@ -343,6 +343,7 @@ jobs:
               
               private val modeNames = listOf("STAY", "FLOW", "DRIVE", "LOUNGE", "LUXURY", "ICE", "SPORT", "ECO")
               
+              // 5分タイマー
               private val timeAutoRunnable = object : Runnable {
                   override fun run() {
                       val current = StateManager.currentMode.value ?: 0
@@ -360,7 +361,7 @@ jobs:
                   initPaints()
                   audioManager = carContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
                   
-                  // スマホ操作監視
+                  // スマホ操作を監視
                   StateManager.currentMode.observe(this) { mode ->
                        if (mode == -2) handler.post(timeAutoRunnable)
                        else handler.removeCallbacks(timeAutoRunnable)
@@ -415,7 +416,6 @@ jobs:
                   val bitmap = generateBitmap()
                   val carIcon = CarIcon.Builder(IconCompat.createWithBitmap(bitmap)).build()
 
-                  // 音楽操作用 ActionStrip
                   val actionStrip = ActionStrip.Builder()
                       .addAction(Action.Builder().setIcon(CarIcon.Builder(IconCompat.createWithResource(carContext, R.drawable.ic_skip_previous)).build()).setOnClickListener { sendMediaKey(KeyEvent.KEYCODE_MEDIA_PREVIOUS) }.build())
                       .addAction(Action.Builder().setIcon(CarIcon.Builder(IconCompat.createWithResource(carContext, R.drawable.ic_play_pause)).build()).setOnClickListener { sendMediaKey(KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE) }.build())
@@ -492,5 +492,5 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: AmbientFlow-IoTFix-APK
+          name: AmbientFlow-IoTFinal-APK
           path: app/build/outputs/apk/debug/app-debug.apk
