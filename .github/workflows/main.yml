@@ -1,4 +1,4 @@
-name: Build Ambient Flow (Smart Dashboard)
+name: Build Ambient Flow (Twin-Display Fixed)
 
 on:
   workflow_dispatch:
@@ -74,8 +74,8 @@ jobs:
                   applicationId = "jp.kazukun.ambient"
                   minSdk = 26
                   targetSdk = 35
-                  versionCode = 5000
-                  versionName = "500.0.SmartDash"
+                  versionCode = 7000
+                  versionName = "700.0.TwinFixed"
               }
               buildTypes { release { isMinifyEnabled = false } }
               compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
@@ -85,8 +85,8 @@ jobs:
           dependencies {
               implementation("androidx.core:core-ktx:1.12.0")
               implementation("androidx.appcompat:appcompat:1.6.1")
-              implementation("androidx.car.app:app:1.4.0")
-              implementation("com.google.android.gms:play-services-location:21.0.1")
+              implementation("androidx.media:media:1.7.0")
+              implementation("androidx.constraintlayout:constraintlayout:2.1.4")
           }
           EOF
 
@@ -95,67 +95,52 @@ jobs:
           <resources><string name="app_name">Ambient Flow</string></resources>
           EOF
           
-          # ★戦略変更: "parking" (駐車場) カテゴリとして申請
-          # これはNavigationより緩く、Mediaのように音楽を止めない
           cat > app/src/main/res/xml/automotive_app_desc.xml <<EOF
           <automotiveApp>
-              <uses name="parking"/>
+              <uses name="media"/>
           </automotiveApp>
           EOF
 
           # --- Icons ---
-          # 1. Color Palette (Luxury)
           cat > app/src/main/res/drawable/ic_palette_luxury.xml <<EOF
           <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24"><path android:fillColor="#E0E0E0" android:pathData="M12,3c-4.97,0 -9,4.03 -9,9s4.03,9 9,9c0.83,0 1.5,-0.67 1.5,-1.5 0,-0.39 -0.15,-0.74 -0.39,-1.01 -0.23,-0.26 -0.38,-0.61 -0.38,-0.99 0,-0.83 0.67,-1.5 1.5,-1.5H16c2.76,0 5,-2.24 5,-5 0,-4.42 -4.03,-8 -9,-8zM6.5,12c-0.83,0 -1.5,-0.67 -1.5,-1.5S5.67,9 6.5,9 8,9.67 8,10.5 7.33,12 6.5,12z"/></vector>
           EOF
-          
-          # 2. Previous
-          cat > app/src/main/res/drawable/ic_skip_previous.xml <<EOF
-          <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24"><path android:fillColor="#FFFFFF" android:pathData="M6,6h2v12H6zm3.5,6l8.5,6V6z"/></vector>
-          EOF
 
-          # 3. Play/Pause
-          cat > app/src/main/res/drawable/ic_play_pause.xml <<EOF
-          <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24"><path android:fillColor="#FFFFFF" android:pathData="M8,5v14l11,-7z"/></vector>
-          EOF
-
-          # 4. Next
-          cat > app/src/main/res/drawable/ic_skip_next.xml <<EOF
-          <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24"><path android:fillColor="#FFFFFF" android:pathData="M6,18l8.5,-6L6,6v12zM16,6v12h2V6h-2z"/></vector>
+          cat > app/src/main/res/drawable/ic_auto_mode.xml <<EOF
+          <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24"><path android:fillColor="#E0E0E0" android:pathData="M12,2C6.48,2 2,6.48 2,12s4.48,10 10,10 10,-4.48 10,-10S17.52,2 12,2zm0,18c-4.41,0 -8,-3.59 -8,-8s3.59,-8 8,-8 8,3.59 8,8 -3.59,8 -8,8zm-1,-13h2v6h-2zm0,8h2v2h-2z"/></vector>
           EOF
 
           cat > app/src/main/res/drawable/ic_launcher_background.xml <<EOF
           <vector android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108" xmlns:android="http://schemas.android.com/apk/res/android"><path android:fillColor="#000022" android:pathData="M0,0h108v108h-108z"/></vector>
           EOF
           cat > app/src/main/res/drawable/ic_launcher_foreground.xml <<EOF
-          <vector android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108" xmlns:android="http://schemas.android.com/apk/res/android"><path android:fillColor="#E0E0E0" android:pathData="M54,26 A28,28 0 1,0 54,82 A28,28 0 1,0 54,26 M54,40 A14,14 0 1,1 54,68 A14,14 0 1,1 54,40"/></vector>
+          <vector android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108" xmlns:android="http://schemas.android.com/apk/res/android"><path android:fillColor="#FFFFFF" android:pathData="M54,26 A28,28 0 1,0 54,82 A28,28 0 1,0 54,26 M54,40 A14,14 0 1,1 54,68 A14,14 0 1,1 54,40"/></vector>
           EOF
           cat > app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml <<EOF
           <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android"><background android:drawable="@drawable/ic_launcher_background"/><foreground android:drawable="@drawable/ic_launcher_foreground"/></adaptive-icon>
           EOF
           cp app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml
 
-          # --- 7. Manifest (PARKING Category) ---
+          # --- 7. Manifest ---
           cat > app/src/main/AndroidManifest.xml <<EOF
           <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-              <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
-              <uses-permission android:name="android.permission.INTERNET" />
               <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-              
+              <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+              <uses-permission android:name="android.permission.INTERNET" />
+              <uses-permission android:name="android.permission.WAKE_LOCK" />
+              <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
               <application android:label="Ambient Flow" android:icon="@mipmap/ic_launcher" android:theme="@style/Theme.AppCompat.NoActionBar">
                   <meta-data android:name="com.google.android.gms.car.application" android:resource="@xml/automotive_app_desc" />
-                  <meta-data android:name="androidx.car.app.minCarApiLevel" android:value="1" />
                   
-                  <service android:name=".AmbientCarService" android:exported="true">
+                  <service android:name=".AmbientMediaService" android:exported="true" android:foregroundServiceType="mediaPlayback">
                       <intent-filter>
-                          <action android:name="androidx.car.app.CarAppService" />
-                          <category android:name="androidx.car.app.category.PARKING"/>
-                          <category android:name="android.intent.category.DEFAULT" />
+                          <action android:name="android.media.browse.MediaBrowserService" />
                       </intent-filter>
                   </service>
 
-                  <activity android:name=".MainActivity" android:exported="true">
+                  <activity android:name=".MainActivity" android:exported="true" android:screenOrientation="portrait">
                       <intent-filter>
                           <action android:name="android.intent.action.MAIN" />
                           <category android:name="android.intent.category.LAUNCHER" />
@@ -168,90 +153,240 @@ jobs:
           # --- 8. MainActivity ---
           cat > app/src/main/java/jp/kazukun/ambient/MainActivity.kt <<EOF
           package jp.kazukun.ambient
-          import android.Manifest
-          import android.content.pm.PackageManager
+
+          import android.content.ComponentName
+          import android.graphics.Color
+          import android.graphics.drawable.BitmapDrawable
           import android.os.Bundle
+          import android.support.v4.media.MediaBrowserCompat
+          import android.support.v4.media.MediaMetadataCompat
+          import android.support.v4.media.session.MediaControllerCompat
+          import android.support.v4.media.session.PlaybackStateCompat
+          import android.view.Gravity
+          import android.widget.*
           import androidx.appcompat.app.AppCompatActivity
-          import androidx.core.app.ActivityCompat
-          import androidx.core.content.ContextCompat
 
           class MainActivity : AppCompatActivity() {
+              private lateinit var mediaBrowser: MediaBrowserCompat
+              private lateinit var rootLayout: FrameLayout
+              private lateinit var gradientView: ImageView
+              private lateinit var statusText: TextView
+
+              private val connectionCallback = object : MediaBrowserCompat.ConnectionCallback() {
+                  override fun onConnected() {
+                      val token = mediaBrowser.sessionToken
+                      val controller = MediaControllerCompat(this@MainActivity, token)
+                      MediaControllerCompat.setMediaController(this@MainActivity, controller)
+                      controller.registerCallback(controllerCallback)
+                      updateUI(controller.metadata)
+                  }
+              }
+
+              private val controllerCallback = object : MediaControllerCompat.Callback() {
+                  override fun onMetadataChanged(metadata: MediaMetadataCompat?) {
+                      updateUI(metadata)
+                  }
+              }
+
               override fun onCreate(savedInstanceState: Bundle?) {
                   super.onCreate(savedInstanceState)
-                  if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-                      ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.ACCESS_FINE_LOCATION), 99)
+                  setupUI()
+                  
+                  mediaBrowser = MediaBrowserCompat(this, 
+                      ComponentName(this, AmbientMediaService::class.java),
+                      connectionCallback, null)
+                  mediaBrowser.connect()
+              }
+              
+              private fun setupUI() {
+                  rootLayout = FrameLayout(this).apply { setBackgroundColor(Color.BLACK) }
+                  gradientView = ImageView(this).apply { scaleType = ImageView.ScaleType.FIT_XY }
+                  rootLayout.addView(gradientView, FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
+                  
+                  val container = LinearLayout(this).apply {
+                      orientation = LinearLayout.VERTICAL
+                      gravity = Gravity.CENTER
+                      setPadding(50, 50, 50, 50)
                   }
+                  
+                  val title = TextView(this).apply {
+                      text = "PEUGEOT i-Cockpit\nAmbient Control"
+                      textSize = 24f
+                      setTextColor(Color.WHITE)
+                      gravity = Gravity.CENTER
+                      typeface = android.graphics.Typeface.DEFAULT_BOLD
+                  }
+                  container.addView(title)
+                  
+                  statusText = TextView(this).apply {
+                      text = "Connecting..."
+                      textSize = 18f
+                      setTextColor(Color.LTGRAY)
+                      gravity = Gravity.CENTER
+                      setPadding(0, 30, 0, 50)
+                  }
+                  container.addView(statusText)
+                  
+                  val btnColor = Button(this).apply {
+                      text = "CHANGE COLOR"
+                      setBackgroundColor(Color.DKGRAY)
+                      setTextColor(Color.WHITE)
+                      setOnClickListener {
+                          MediaControllerCompat.getMediaController(this@MainActivity)
+                              ?.transportControls?.sendCustomAction("ACTION_CHANGE_COLOR", null)
+                      }
+                  }
+                  container.addView(btnColor, LinearLayout.LayoutParams(600, 150))
+                  
+                  val btnAuto = Button(this).apply {
+                      text = "AUTO MODE"
+                      setBackgroundColor(Color.DKGRAY)
+                      setTextColor(Color.WHITE)
+                      val params = LinearLayout.LayoutParams(600, 150)
+                      params.topMargin = 30
+                      layoutParams = params
+                      setOnClickListener {
+                          MediaControllerCompat.getMediaController(this@MainActivity)
+                              ?.transportControls?.sendCustomAction("ACTION_AUTO_MODE", null)
+                      }
+                  }
+                  container.addView(btnAuto)
+
+                  rootLayout.addView(container, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+                  setContentView(rootLayout)
+              }
+
+              private fun updateUI(metadata: MediaMetadataCompat?) {
+                  metadata?.let {
+                      val title = it.getString(MediaMetadataCompat.METADATA_KEY_TITLE) ?: "Ambient Flow"
+                      statusText.text = "Current: \$title"
+                      val bmp = it.getBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART)
+                      if (bmp != null) {
+                          gradientView.setImageBitmap(bmp)
+                      }
+                  }
+              }
+
+              override fun onDestroy() {
+                  super.onDestroy()
+                  if (MediaControllerCompat.getMediaController(this) != null) {
+                      MediaControllerCompat.getMediaController(this).unregisterCallback(controllerCallback)
+                  }
+                  mediaBrowser.disconnect()
               }
           }
           EOF
 
-          # --- 9. Car Service (Remote Control Logic) ---
-          cat > app/src/main/java/jp/kazukun/ambient/AmbientCarService.kt <<EOF
+          # --- 9. AmbientMediaService (Fix: Safe Bitmap Size) ---
+          cat > app/src/main/java/jp/kazukun/ambient/AmbientMediaService.kt <<EOF
           package jp.kazukun.ambient
 
-          import android.Manifest
+          import android.app.*
           import android.content.Context
-          import android.content.pm.PackageManager
+          import android.content.Intent
+          import android.content.pm.ServiceInfo
           import android.graphics.*
-          import android.location.*
-          import android.media.AudioManager
+          import android.os.Build
           import android.os.Bundle
-          import android.view.KeyEvent
-          import androidx.car.app.CarAppService
-          import androidx.car.app.CarContext
-          import androidx.car.app.Screen
-          import androidx.car.app.Session
-          import androidx.car.app.model.*
-          import androidx.car.app.validation.HostValidator
+          import android.os.Handler
+          import android.os.Looper
+          import android.support.v4.media.MediaBrowserCompat
+          import android.support.v4.media.MediaDescriptionCompat
+          import android.support.v4.media.MediaMetadataCompat
+          import android.support.v4.media.session.MediaSessionCompat
+          import android.support.v4.media.session.PlaybackStateCompat
+          import androidx.core.app.NotificationCompat
           import androidx.core.content.ContextCompat
-          import androidx.core.graphics.drawable.IconCompat
-          import androidx.lifecycle.DefaultLifecycleObserver
-          import androidx.lifecycle.LifecycleOwner
+          import androidx.media.MediaBrowserServiceCompat
+          import androidx.media.app.NotificationCompat.MediaStyle
 
-          class AmbientCarService : CarAppService() {
-              override fun createHostValidator() = HostValidator.ALLOW_ALL_HOSTS_VALIDATOR
-              override fun onCreateSession() = AmbientSession()
-          }
-
-          class AmbientSession : Session() {
-              override fun onCreateScreen(intent: android.content.Intent): Screen {
-                  return AmbientScreen(carContext)
-              }
-          }
-
-          class AmbientScreen(carContext: CarContext) : Screen(carContext), DefaultLifecycleObserver, LocationListener {
-              private val BITMAP_WIDTH = 800
-              private val BITMAP_HEIGHT = 480
+          class AmbientMediaService : MediaBrowserServiceCompat() {
+              private lateinit var mediaSession: MediaSessionCompat
               
+              // ★修正: 1024だとBinder通信制限(1MB)で落ちるので480に縮小
+              private val BITMAP_SIZE = 480
+              private val bitmap = Bitmap.createBitmap(BITMAP_SIZE, BITMAP_SIZE, Bitmap.Config.ARGB_8888)
+              private val canvas = Canvas(bitmap)
+              private val paint = Paint()
               private val textPaint = Paint()
               private val peugeotPaint = Paint()
               private val subPaint = Paint()
               private val bgPaint = Paint()
-
-              private var locationManager: LocationManager? = null
-              private var audioManager: AudioManager? = null
               
-              // -1: AUTO, 0-7: Manual
-              private var currentMode = -1
-              private var autoDerivedMode = 0
-              
+              private var currentMode = 0 
               private val modeNames = listOf(
                   "STAY", "FLOW", "DRIVE", "LOUNGE", 
                   "LUXURY", "ICE", "SPORT", "ECO"
               )
               
-              init {
-                  lifecycle.addObserver(this)
-                  initPaints()
-                  audioManager = carContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-              }
+              private val CHANNEL_ID = "ambient_media_channel"
+              private val NOTIFICATION_ID = 555
+              private var isStarted = false
               
+              private val handler = Handler(Looper.getMainLooper())
+              private var autoColorIndex = 0
+              private val autoRunnable = object : Runnable {
+                  override fun run() {
+                      if (currentMode == -1) {
+                          autoColorIndex = (autoColorIndex + 1) % modeNames.size
+                          updateDisplay(autoColorIndex)
+                          handler.postDelayed(this, 3000) 
+                      }
+                  }
+              }
+
+              override fun onCreate() {
+                  super.onCreate()
+                  createNotificationChannel()
+                  initPaints()
+
+                  mediaSession = MediaSessionCompat(this, "AmbientSession")
+                  mediaSession.isActive = true
+                  sessionToken = mediaSession.sessionToken
+                  
+                  val intent = Intent(this, MainActivity::class.java)
+                  val pi = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE)
+                  mediaSession.setSessionActivity(pi)
+                  
+                  mediaSession.setCallback(object : MediaSessionCompat.Callback() {
+                      override fun onPlay() { updateDisplay() }
+                      override fun onPrepare() { 
+                          mediaSession.isActive = true
+                          updateDisplay() 
+                      }
+                      override fun onCustomAction(action: String?, extras: Bundle?) {
+                          if (action == "ACTION_CHANGE_COLOR") {
+                              currentMode = (currentMode + 1) % modeNames.size
+                              handler.removeCallbacks(autoRunnable) 
+                              updateDisplay()
+                          }
+                          if (action == "ACTION_AUTO_MODE") {
+                              currentMode = -1 
+                              handler.post(autoRunnable)
+                          }
+                      }
+                  })
+              }
+
+              override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+                  try {
+                      val notif = buildNotification("Active")
+                      val type = ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+                      if (Build.VERSION.SDK_INT >= 29) startForeground(NOTIFICATION_ID, notif, type)
+                      else startForeground(NOTIFICATION_ID, notif)
+                      
+                      isStarted = true
+                      updateDisplay()
+                  } catch (e: Exception) { e.printStackTrace() }
+                  return START_STICKY
+              }
+
               private fun initPaints() {
                   textPaint.apply {
                       isAntiAlias = true
                       textAlign = Paint.Align.CENTER
                       color = Color.WHITE
-                      textSize = 40f
+                      textSize = 30f // 少し文字サイズも調整
                       typeface = Typeface.create(Typeface.SERIF, Typeface.BOLD)
                       setShadowLayer(10f, 0f, 0f, Color.BLACK)
                   }
@@ -259,7 +394,7 @@ jobs:
                       isAntiAlias = true
                       textAlign = Paint.Align.CENTER
                       color = Color.parseColor("#E5E4E2")
-                      textSize = 50f
+                      textSize = 40f
                       typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD_ITALIC)
                       setShadowLayer(10f, 0f, 0f, Color.parseColor("#60000000"))
                   }
@@ -267,121 +402,102 @@ jobs:
                       isAntiAlias = true
                       textAlign = Paint.Align.CENTER
                       color = Color.parseColor("#B0BEC5")
-                      textSize = 30f
-                      typeface = Typeface.DEFAULT
+                      textSize = 20f
                   }
                   bgPaint.isAntiAlias = true
               }
 
-              override fun onCreate(owner: LifecycleOwner) {
-                  setupLocation()
-              }
-              
-              private fun setupLocation() {
-                   if (ContextCompat.checkSelfPermission(carContext, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
-                      locationManager = carContext.getSystemService(Context.LOCATION_SERVICE) as LocationManager
-                      try {
-                          locationManager?.requestLocationUpdates(LocationManager.GPS_PROVIDER, 2000, 2f, this)
-                      } catch (e: Exception) { e.printStackTrace() }
-                  }
-              }
-              
-              override fun onLocationChanged(location: Location) {
-                  val speedKmh = location.speed * 3.6f
-                  val newAutoMode = when {
-                      speedKmh < 5  -> 0 // STAY
-                      speedKmh < 30 -> 7 // ECO
-                      speedKmh < 50 -> 1 // FLOW
-                      speedKmh < 70 -> 4 // LUXURY
-                      speedKmh < 90 -> 6 // SPORT
-                      else          -> 2 // DRIVE
-                  }
-                  
-                  if (currentMode == -1 && newAutoMode != autoDerivedMode) {
-                      autoDerivedMode = newAutoMode
-                      invalidate()
-                  }
-              }
-
-              // ★音楽操作機能（リモコン）
-              private fun sendMediaKey(keyCode: Int) {
-                  try {
-                      audioManager?.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, keyCode))
-                      audioManager?.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_UP, keyCode))
-                  } catch (e: Exception) { e.printStackTrace() }
-              }
-
-              override fun onGetTemplate(): Template {
-                  // Bitmap生成
-                  val bitmap = generateBitmap()
-                  val carIcon = CarIcon.Builder(IconCompat.createWithBitmap(bitmap)).build()
-
-                  // ★音楽操作ボタン (ActionStrip)
-                  val actionStrip = ActionStrip.Builder()
-                      .addAction(Action.Builder().setIcon(CarIcon.Builder(IconCompat.createWithResource(carContext, R.drawable.ic_skip_previous)).build()).setOnClickListener { sendMediaKey(KeyEvent.KEYCODE_MEDIA_PREVIOUS) }.build())
-                      .addAction(Action.Builder().setIcon(CarIcon.Builder(IconCompat.createWithResource(carContext, R.drawable.ic_play_pause)).build()).setOnClickListener { sendMediaKey(KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE) }.build())
-                      .addAction(Action.Builder().setIcon(CarIcon.Builder(IconCompat.createWithResource(carContext, R.drawable.ic_skip_next)).build()).setOnClickListener { sendMediaKey(KeyEvent.KEYCODE_MEDIA_NEXT) }.build())
-                      .build()
-
-                  // 背景画像パネル
-                  val pane = Pane.Builder()
-                      .setImage(carIcon)
-                      .addAction(
-                          Action.Builder()
-                              .setTitle("Color") // 色変更ボタン
-                              .setIcon(CarIcon.Builder(IconCompat.createWithResource(carContext, R.drawable.ic_palette_luxury)).build())
-                              .setOnClickListener { 
-                                  if (currentMode == 7) currentMode = -1 else currentMode++
-                                  invalidate()
-                              }
-                              .build()
-                      )
-                      .build()
-
-                  return PaneTemplate.Builder(pane)
-                      .setTitle("Ambient Dashboard")
-                      .setActionStrip(actionStrip) // 上部に音楽操作ボタンを配置
-                      .build()
-              }
-
-              private fun generateBitmap(): Bitmap {
-                  val bmp = Bitmap.createBitmap(BITMAP_WIDTH, BITMAP_HEIGHT, Bitmap.Config.ARGB_8888)
-                  val canvas = Canvas(bmp)
-
-                  val displayMode = if (currentMode == -1) autoDerivedMode else currentMode
+              private fun updateDisplay(overrideIndex: Int? = null) {
+                  val displayMode = overrideIndex ?: if (currentMode == -1) autoColorIndex else currentMode
                   val modeText = if (currentMode == -1) "AUTO (" + modeNames[displayMode] + ")" else modeNames[displayMode]
 
                   val shader = when(displayMode) {
-                      0 -> LinearGradient(0f, 0f, 0f, BITMAP_HEIGHT.toFloat(), Color.parseColor("#050510"), Color.parseColor("#1A237E"), Shader.TileMode.CLAMP)
-                      1 -> LinearGradient(0f, 0f, 0f, BITMAP_HEIGHT.toFloat(), Color.parseColor("#00251a"), Color.parseColor("#00695c"), Shader.TileMode.CLAMP)
-                      2 -> LinearGradient(0f, 0f, 0f, BITMAP_HEIGHT.toFloat(), Color.parseColor("#210000"), Color.parseColor("#b71c1c"), Shader.TileMode.CLAMP)
-                      3 -> LinearGradient(0f, 0f, 0f, BITMAP_HEIGHT.toFloat(), Color.parseColor("#1a0033"), Color.parseColor("#6200ea"), Shader.TileMode.CLAMP)
-                      4 -> LinearGradient(0f, 0f, 0f, BITMAP_HEIGHT.toFloat(), Color.parseColor("#3e2723"), Color.parseColor("#ffd54f"), Shader.TileMode.CLAMP)
-                      5 -> LinearGradient(0f, 0f, 0f, BITMAP_HEIGHT.toFloat(), Color.parseColor("#263238"), Color.parseColor("#eceff1"), Shader.TileMode.CLAMP)
-                      6 -> LinearGradient(0f, 0f, 0f, BITMAP_HEIGHT.toFloat(), Color.parseColor("#3e1b00"), Color.parseColor("#ff6f00"), Shader.TileMode.CLAMP)
-                      7 -> LinearGradient(0f, 0f, 0f, BITMAP_HEIGHT.toFloat(), Color.parseColor("#003300"), Color.parseColor("#64dd17"), Shader.TileMode.CLAMP)
-                      else -> LinearGradient(0f, 0f, 0f, BITMAP_HEIGHT.toFloat(), Color.parseColor("#000000"), Color.parseColor("#333333"), Shader.TileMode.CLAMP)
+                      0 -> LinearGradient(0f, 0f, 0f, BITMAP_SIZE.toFloat(), Color.parseColor("#050510"), Color.parseColor("#1A237E"), Shader.TileMode.CLAMP)
+                      1 -> LinearGradient(0f, 0f, 0f, BITMAP_SIZE.toFloat(), Color.parseColor("#00251a"), Color.parseColor("#00695c"), Shader.TileMode.CLAMP)
+                      2 -> LinearGradient(0f, 0f, 0f, BITMAP_SIZE.toFloat(), Color.parseColor("#210000"), Color.parseColor("#b71c1c"), Shader.TileMode.CLAMP)
+                      3 -> LinearGradient(0f, 0f, 0f, BITMAP_SIZE.toFloat(), Color.parseColor("#1a0033"), Color.parseColor("#6200ea"), Shader.TileMode.CLAMP)
+                      4 -> LinearGradient(0f, 0f, 0f, BITMAP_SIZE.toFloat(), Color.parseColor("#3e2723"), Color.parseColor("#ffd54f"), Shader.TileMode.CLAMP)
+                      5 -> LinearGradient(0f, 0f, 0f, BITMAP_SIZE.toFloat(), Color.parseColor("#263238"), Color.parseColor("#eceff1"), Shader.TileMode.CLAMP)
+                      6 -> LinearGradient(0f, 0f, 0f, BITMAP_SIZE.toFloat(), Color.parseColor("#3e1b00"), Color.parseColor("#ff6f00"), Shader.TileMode.CLAMP)
+                      7 -> LinearGradient(0f, 0f, 0f, BITMAP_SIZE.toFloat(), Color.parseColor("#003300"), Color.parseColor("#64dd17"), Shader.TileMode.CLAMP)
+                      else -> LinearGradient(0f, 0f, 0f, BITMAP_SIZE.toFloat(), Color.parseColor("#000000"), Color.parseColor("#333333"), Shader.TileMode.CLAMP)
                   }
-                  
                   bgPaint.shader = shader
-                  canvas.drawRect(0f, 0f, BITMAP_WIDTH.toFloat(), BITMAP_HEIGHT.toFloat(), bgPaint)
+                  canvas.drawRect(0f, 0f, BITMAP_SIZE.toFloat(), BITMAP_SIZE.toFloat(), bgPaint)
 
-                  val cx = BITMAP_WIDTH / 2f
-                  val cy = BITMAP_HEIGHT / 2f
+                  val cx = BITMAP_SIZE / 2f
+                  val cy = BITMAP_SIZE / 2f
+                  canvas.drawText("Ambient Flow", cx, cy - 50f, textPaint)
+                  canvas.drawText("PEUGEOT", cx, cy + 10f, peugeotPaint)
+                  canvas.drawText("Mode: " + modeText, cx, cy + 60f, subPaint)
+
+                  val metadata = MediaMetadataCompat.Builder()
+                      .putString(MediaMetadataCompat.METADATA_KEY_MEDIA_ID, "peugeot_mode")
+                      .putString(MediaMetadataCompat.METADATA_KEY_TITLE, "Peugeot " + modeText)
+                      .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, "Ambient Flow")
+                      .putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, bitmap)
+                      .putBitmap(MediaMetadataCompat.METADATA_KEY_DISPLAY_ICON, bitmap)
+                      .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, -1L)
+                      .build()
+                  mediaSession.setMetadata(metadata)
+
+                  val colorAction = PlaybackStateCompat.CustomAction.Builder(
+                      "ACTION_CHANGE_COLOR", "Color", R.drawable.ic_palette_luxury).build()
+                  val autoAction = PlaybackStateCompat.CustomAction.Builder(
+                      "ACTION_AUTO_MODE", "Auto", R.drawable.ic_auto_mode).build()
+
+                  val state = PlaybackStateCompat.Builder()
+                      .setActions(PlaybackStateCompat.ACTION_PLAY_PAUSE)
+                      .addCustomAction(colorAction)
+                      .addCustomAction(autoAction)
+                      .setState(PlaybackStateCompat.STATE_PLAYING, 0L, 1.0f)
+                      .build()
                   
-                  canvas.drawText("Ambient Flow", cx, cy - 60f, textPaint)
-                  canvas.drawText("PEUGEOT", cx, cy + 20f, peugeotPaint)
-                  canvas.drawText("Mode: " + modeText, cx, cy + 100f, subPaint)
+                  mediaSession.setPlaybackState(state)
                   
-                  return bmp
+                  if (isStarted) {
+                      try {
+                          val notif = buildNotification("Mode: " + modeText)
+                          val mgr = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                          mgr.notify(NOTIFICATION_ID, notif)
+                      } catch (e: Exception) {}
+                  }
               }
 
-              override fun onStatusChanged(p: String?, s: Int, e: Bundle?) {}
-              override fun onProviderEnabled(p: String) {}
-              override fun onProviderDisabled(p: String) {}
-              
-              override fun onDestroy(owner: LifecycleOwner) {
-                  locationManager?.removeUpdates(this)
+              override fun onGetRoot(pkg: String, uid: Int, root: Bundle?): BrowserRoot {
+                  return BrowserRoot("ROOT", null)
+              }
+
+              override fun onLoadChildren(id: String, res: Result<MutableList<MediaBrowserCompat.MediaItem>>) {
+                  val mediaItems = mutableListOf<MediaBrowserCompat.MediaItem>()
+                  val desc = MediaDescriptionCompat.Builder().setMediaId("p_item").setTitle("Peugeot Ambient").setSubtitle("Ready").build()
+                  mediaItems.add(MediaBrowserCompat.MediaItem(desc, MediaBrowserCompat.MediaItem.FLAG_PLAYABLE))
+                  res.sendResult(mediaItems)
+              }
+
+              private fun buildNotification(text: String): Notification {
+                   val intent = Intent(this, MainActivity::class.java)
+                   val pendingIntent = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE)
+                   
+                   return NotificationCompat.Builder(this, CHANNEL_ID)
+                      .setContentTitle("Ambient Flow")
+                      .setContentText(text)
+                      .setSmallIcon(R.drawable.ic_palette_luxury)
+                      .setLargeIcon(bitmap)
+                      .setContentIntent(pendingIntent)
+                      .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                      .setStyle(MediaStyle().setMediaSession(mediaSession.sessionToken))
+                      .setOngoing(true)
+                      .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
+                      .build()
+              }
+
+              private fun createNotificationChannel() {
+                  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                      val channel = NotificationChannel(CHANNEL_ID, "Ambient Status", NotificationManager.IMPORTANCE_LOW)
+                      val mgr = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                      mgr.createNotificationChannel(channel)
+                  }
               }
           }
           EOF
@@ -395,5 +511,5 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: AmbientFlow-SmartDash-APK
+          name: AmbientFlow-TwinFixed-APK
           path: app/build/outputs/apk/debug/app-debug.apk
