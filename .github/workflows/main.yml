@@ -91,8 +91,8 @@ jobs:
                   applicationId = "$PKG"
                   minSdk = 26
                   targetSdk = 34
-                  versionCode = 4
-                  versionName = "4.0.Lion"
+                  versionCode = 5
+                  versionName = "5.0.LionFix"
               }
               buildTypes {
                   release {
@@ -229,6 +229,7 @@ jobs:
           EOF
 
           # 2. LionService (Peugeot UI Logic)
+          # ★修正完了: Kotlinの $ を \$ にエスケープしました
           cat > app/src/main/java/jp/kazukun/peugeot/cockpit/LionService.kt <<EOF
           package $PKG
 
@@ -256,37 +257,34 @@ jobs:
               private val renderScope = CoroutineScope(Dispatchers.Default + Job())
               private var isRunning = false
               
-              // 状態管理
               private var currentSpeed = 0f
               private var modeIndex = 0
-              // Peugeotカラー定義
+              
               private val COLOR_ONYX = Color.BLACK
-              private val COLOR_COPPER = Color.rgb(205, 167, 120) // カッパー
-              private val COLOR_KRYPTONITE = Color.rgb(208, 255, 20) // クリプトナイトグリーン
+              private val COLOR_COPPER = Color.rgb(205, 167, 120)
+              private val COLOR_KRYPTONITE = Color.rgb(208, 255, 20)
               private val COLOR_ICE = Color.WHITE
 
-              // 描画設定 (データ量を抑えるため解像度は適度に)
               private val WIDTH = 400 
               private val HEIGHT = 400
               private val bitmap = Bitmap.createBitmap(WIDTH, HEIGHT, Bitmap.Config.ARGB_8888)
               private val canvas = Canvas(bitmap)
               private val paint = Paint().apply { isAntiAlias = true }
               
-              // フォント設定
               private val speedPaint = Paint().apply {
                   isAntiAlias = true
                   color = COLOR_ICE
                   textSize = 80f
                   textAlign = Paint.Align.CENTER
                   typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
-                  setShadowLayer(10f, 0f, 0f, COLOR_KRYPTONITE) // 発光エフェクト
+                  setShadowLayer(10f, 0f, 0f, COLOR_KRYPTONITE)
               }
               private val labelPaint = Paint().apply {
                   isAntiAlias = true
                   color = COLOR_COPPER
                   textSize = 24f
                   textAlign = Paint.Align.CENTER
-                  letterSpacing = 0.2f // モダンな文字間隔
+                  letterSpacing = 0.2f
               }
 
               override fun onCreate() {
@@ -294,20 +292,17 @@ jobs:
                   
                   mediaSession = MediaSessionCompat(this, "LionCockpitSession").apply {
                       setCallback(object : MediaSessionCompat.Callback() {
-                          // 再生ボタンは「モード切替」として機能
                           override fun onPlay() { updateMode(1) }
                           override fun onPause() { updateMode(1) }
                           override fun onSkipToNext() { updateMode(1) }
                           override fun onSkipToPrevious() { updateMode(-1) }
                       })
                       isActive = true
-                      // 重要：即座にPlaying状態にしてローディングを回避
                       setPlaybackState(PlaybackStateCompat.Builder()
                           .setActions(PlaybackStateCompat.ACTION_PLAY or PlaybackStateCompat.ACTION_PAUSE or PlaybackStateCompat.ACTION_SKIP_TO_NEXT)
                           .setState(PlaybackStateCompat.STATE_PLAYING, 0L, 1.0f)
                           .build())
                       
-                      // 初期画面生成
                       drawCockpit()
                       updateMetadata()
                   }
@@ -332,12 +327,10 @@ jobs:
                   }
               }
 
-              // メインループ（更新頻度を抑えて安定化）
               private fun startLoop() {
                   isRunning = true
                   renderScope.launch {
                       while (isActive && isRunning) {
-                          // 500ms (0.5秒) ごとに更新 = これなら車の通信帯域でも詰まらない
                           drawCockpit()
                           withContext(Dispatchers.Main) {
                               updateMetadata()
@@ -347,15 +340,12 @@ jobs:
                   }
               }
 
-              // Peugeot i-Cockpit風 UI描画
               private fun drawCockpit() {
-                  // 背景: オニキスブラック
                   canvas.drawColor(COLOR_ONYX)
                   
                   val cx = WIDTH / 2f
                   val cy = HEIGHT / 2f
                   
-                  // 1. 六角形（ヘキサゴン）のフレームを描く
                   paint.style = Paint.Style.STROKE
                   paint.strokeWidth = 6f
                   paint.color = if (modeIndex == 0) COLOR_COPPER else COLOR_KRYPTONITE
@@ -371,28 +361,23 @@ jobs:
                   path.close()
                   canvas.drawPath(path, paint)
 
-                  // 2. 速度メーターバー（左右から伸びる鋭いライン）
                   paint.style = Paint.Style.FILL
                   paint.strokeWidth = 0f
                   val speedRatio = (currentSpeed / 180f).coerceIn(0f, 1f)
                   
-                  // 左の爪痕
                   paint.color = Color.DKGRAY
                   canvas.drawRect(cx - 150, cy + 80, cx - 50, cy + 90, paint)
                   paint.color = COLOR_ICE
                   canvas.drawRect(cx - 150, cy + 80, cx - 150 + (100 * speedRatio), cy + 90, paint)
 
-                  // 右の爪痕
                   paint.color = Color.DKGRAY
                   canvas.drawRect(cx + 50, cy + 80, cx + 150, cy + 90, paint)
                   paint.color = COLOR_ICE
                   canvas.drawRect(cx + 150 - (100 * speedRatio), cy + 80, cx + 150, cy + 90, paint)
 
-                  // 3. 速度数値 (中央にドンと配置)
                   val speedText = currentSpeed.toInt().toString()
                   canvas.drawText(speedText, cx, cy + 30, speedPaint)
 
-                  // 4. ラベル
                   labelPaint.color = if (modeIndex == 0) COLOR_COPPER else COLOR_KRYPTONITE
                   canvas.drawText("KM/H", cx, cy + 130, labelPaint)
                   
@@ -401,10 +386,10 @@ jobs:
               }
 
               private fun updateMetadata() {
-                  // メタデータ更新。画像は毎回送るが、頻度が低いので安定するはず。
                   val metadata = MediaMetadataCompat.Builder()
                       .putString(MediaMetadataCompat.METADATA_KEY_TITLE, "i-Cockpit")
-                      .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, "${currentSpeed.toInt()} km/h")
+                      // ★ここを修正しました: \${...}
+                      .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, "\${currentSpeed.toInt()} km/h")
                       .putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, bitmap)
                       .build()
                   mediaSession.setMetadata(metadata)
@@ -412,14 +397,12 @@ jobs:
 
               override fun onLocationChanged(location: Location) {
                   currentSpeed = location.speed * 3.6f
-                  // 位置情報が変わった時だけ即座に再描画するのもあり
                   drawCockpit()
                   updateMetadata()
               }
 
-              // 必須：これが無いとローディングが終わらない最重要メソッド
               override fun onLoadChildren(parentId: String, result: Result<MutableList<MediaBrowserCompat.MediaItem>>) {
-                  result.sendResult(mutableListOf()) // 空のリストを即座に返す
+                  result.sendResult(mutableListOf())
               }
 
               override fun onGetRoot(clientPackageName: String, clientUid: Int, rootHints: Bundle?): BrowserRoot {
@@ -434,7 +417,6 @@ jobs:
                   mediaSession.release()
                   super.onDestroy()
               }
-              // Stub
               override fun onStatusChanged(p: String?, s: Int, e: Bundle?) {}
               override fun onProviderEnabled(p: String) {}
               override fun onProviderDisabled(p: String) {}
