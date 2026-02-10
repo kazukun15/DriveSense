@@ -538,8 +538,9 @@ jobs:
               override fun onLoadChildren(parentId: String, result: Result<MutableList<MediaBrowserCompat.MediaItem>>) {
                   result.sendResult(mutableListOf())
               }
-              override fun onGetRoot(clientPackageName: String, clientUid: Int, rootHints: Bundle?): BrowserRoot? {
-                  return BrowserRoot("ROOT", null)
+              override fun onGetRoot(...): MediaBrowserServiceCompat.BrowserRoot? {
+    return MediaBrowserServiceCompat.BrowserRoot("ROOT", null)
+}
               }
               override fun onDestroy() {
                   renderScope.cancel()
