@@ -1,4 +1,4 @@
-name: Build Peugeot i-Cockpit (Final Fix)
+name: Build Peugeot Stable Cockpit
 
 on:
   workflow_dispatch:
@@ -33,8 +33,8 @@ jobs:
         run: |
           set -euxo pipefail
 
-          # パッケージ名を変更し、キャッシュ問題を回避
-          PKG="jp.kazukun.peugeot.finalcockpit"
+          # パッケージ名を変更し、クリーンな状態でインストールさせる
+          PKG="jp.kazukun.peugeot.stable"
           APP_LABEL="i-Cockpit"
 
           # 1. Settings
@@ -53,11 +53,11 @@ jobs:
                   mavenCentral()
               }
           }
-          rootProject.name = "PeugeotFinal"
+          rootProject.name = "PeugeotStable"
           include(":app")
           EOF
 
-          # 2. Build Gradle (Project)
+          # 2. Build Gradle
           cat > build.gradle.kts <<EOF
           plugins {
               id("com.android.application") version "8.3.0" apply false
@@ -74,8 +74,8 @@ jobs:
           android.nonTransitiveRClass=true
           EOF
 
-          # 4. App Module Setup
-          mkdir -p app/src/main/{java/jp/kazukun/peugeot/finalcockpit,res/xml,res/values,res/drawable,res/mipmap-anydpi-v26}
+          # 4. App Module
+          mkdir -p app/src/main/{java/jp/kazukun/peugeot/stable,res/xml,res/values,res/drawable,res/mipmap-anydpi-v26}
 
           cat > app/build.gradle.kts <<EOF
           plugins {
@@ -91,14 +91,11 @@ jobs:
                   applicationId = "$PKG"
                   minSdk = 26
                   targetSdk = 34
-                  versionCode = 6
-                  versionName = "6.0.Stable"
+                  versionCode = 1
+                  versionName = "1.0.Stable"
               }
               buildTypes {
-                  release {
-                      isMinifyEnabled = true
-                      proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-                  }
+                  release { isMinifyEnabled = false }
               }
               compileOptions {
                   sourceCompatibility = JavaVersion.VERSION_17
@@ -120,7 +117,6 @@ jobs:
           cat > app/src/main/res/values/strings.xml <<EOF
           <resources>
               <string name="app_name">$APP_LABEL</string>
-              <string name="channel_name">Cockpit Service</string>
           </resources>
           EOF
 
@@ -137,13 +133,11 @@ jobs:
               <path android:fillColor="#000000" android:pathData="M0,0h108v108h-108z"/>
           </vector>
           EOF
-          
           cat > app/src/main/res/drawable/ic_launcher_foreground.xml <<EOF
           <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
-              <path android:fillColor="#E0E0E0" android:pathData="M54,18 L24,30 L30,75 L54,90 L78,75 L84,30 L54,18 Z M54,28 L74,38 L70,70 L54,80 L38,70 L34,38 L54,28 Z"/>
+              <path android:fillColor="#CDA778" android:pathData="M54,18 L24,30 L30,75 L54,90 L78,75 L84,30 L54,18 Z M54,28 L74,38 L70,70 L54,80 L38,70 L34,38 L54,28 Z"/>
           </vector>
           EOF
-          
           cat > app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml <<EOF
           <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
               <background android:drawable="@drawable/ic_launcher_background"/>
@@ -185,6 +179,7 @@ jobs:
                   <activity
                       android:name=".MainActivity"
                       android:exported="true"
+                      android:screenOrientation="landscape"
                       android:launchMode="singleTop">
                       <intent-filter>
                           <action android:name="android.intent.action.MAIN" />
@@ -196,42 +191,226 @@ jobs:
           EOF
 
           # --- Kotlin Code ---
-          # 1. MainActivity (Request Permissions)
-          cat > app/src/main/java/jp/kazukun/peugeot/finalcockpit/MainActivity.kt <<EOF
-          package $PKG
-          import android.Manifest
-          import android.content.pm.PackageManager
-          import android.os.Build
-          import android.os.Bundle
-          import androidx.appcompat.app.AppCompatActivity
-          import androidx.core.app.ActivityCompat
-          import androidx.core.content.ContextCompat
 
-          class MainActivity : AppCompatActivity() {
-              override fun onCreate(savedInstanceState: Bundle?) {
-                  super.onCreate(savedInstanceState)
-                  val perms = mutableListOf(Manifest.permission.ACCESS_FINE_LOCATION)
-                  if (Build.VERSION.SDK_INT >= 33) {
-                      perms.add(Manifest.permission.POST_NOTIFICATIONS)
+          # 1. CockpitRenderer (共通描画エンジン)
+          cat > app/src/main/java/jp/kazukun/peugeot/stable/CockpitRenderer.kt <<EOF
+          package $PKG
+          import android.graphics.*
+          import kotlin.math.*
+
+          class CockpitRenderer {
+              // Peugeot Color Palette
+              private val COLOR_ONYX = Color.BLACK
+              private val COLOR_COPPER = Color.rgb(205, 167, 120) // Copper
+              private val COLOR_KRYPTONITE = Color.rgb(208, 255, 20) // Kryptonite Green
+              private val COLOR_ICE = Color.WHITE
+              private val COLOR_METAL = Color.parseColor("#424242")
+
+              private val paint = Paint().apply { isAntiAlias = true }
+              
+              // フォント設定（文字バッファ確保のためサイズ調整）
+              private val speedPaint = Paint().apply {
+                  isAntiAlias = true
+                  color = COLOR_ICE
+                  textAlign = Paint.Align.CENTER
+                  typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
+                  setShadowLayer(10f, 0f, 0f, COLOR_KRYPTONITE)
+              }
+              private val labelPaint = Paint().apply {
+                  isAntiAlias = true
+                  color = COLOR_COPPER
+                  textSize = 24f
+                  textAlign = Paint.Align.CENTER
+                  letterSpacing = 0.15f
+              }
+              private val modePaint = Paint().apply {
+                  isAntiAlias = true
+                  color = Color.LTGRAY
+                  textSize = 20f
+                  textAlign = Paint.Align.CENTER
+              }
+
+              fun draw(canvas: Canvas, width: Int, height: Int, speed: Float, mode: Int, time: Double) {
+                  val cx = width / 2f
+                  val cy = height / 2f
+                  val r = min(width, height) * 0.45f // 半径
+                  
+                  // 1. 背景：グラデーション（要望の8色系ニュアンス）
+                  val shader = LinearGradient(0f, 0f, 0f, height.toFloat(),
+                      intArrayOf(Color.BLACK, Color.parseColor("#1a1a1a"), Color.BLACK),
+                      null, Shader.TileMode.CLAMP)
+                  paint.shader = shader
+                  paint.style = Paint.Style.FILL
+                  canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paint)
+                  paint.shader = null // リセット
+
+                  // 2. 六角形フレーム (Hexagon Frame)
+                  paint.style = Paint.Style.STROKE
+                  paint.strokeWidth = 6f
+                  paint.color = if (mode == 0) COLOR_COPPER else COLOR_KRYPTONITE
+                  paint.alpha = 255
+                  
+                  val path = Path()
+                  for (i in 0..6) {
+                      val angle = Math.toRadians((i * 60 - 30).toDouble())
+                      val x = cx + r * cos(angle).toFloat()
+                      val y = cy + r * sin(angle).toFloat()
+                      if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
                   }
-                  if (perms.any { ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED }) {
-                      ActivityCompat.requestPermissions(this, perms.toTypedArray(), 99)
+                  path.close()
+                  canvas.drawPath(path, paint)
+
+                  // 3. 爪痕（Claws）スピードメーター
+                  paint.style = Paint.Style.FILL
+                  paint.strokeWidth = 0f
+                  
+                  val speedRatio = (speed / 180f).coerceIn(0f, 1f)
+                  val barWidth = r * 0.9f
+                  val barHeight = 15f
+                  val barY = cy + r * 0.2f
+                  
+                  // 左爪
+                  paint.color = COLOR_METAL
+                  canvas.drawRect(cx - barWidth, barY, cx - 40, barY + barHeight, paint)
+                  paint.color = if (mode == 0) COLOR_ICE else COLOR_KRYPTONITE
+                  val leftFill = (barWidth - 40) * speedRatio
+                  if (leftFill > 0) {
+                      canvas.drawRect(cx - barWidth, barY, cx - barWidth + leftFill, barY + barHeight, paint)
                   }
+
+                  // 右爪
+                  paint.color = COLOR_METAL
+                  canvas.drawRect(cx + 40, barY, cx + barWidth, barY + barHeight, paint)
+                  paint.color = if (mode == 0) COLOR_ICE else COLOR_KRYPTONITE
+                  val rightFill = (barWidth - 40) * speedRatio
+                  if (rightFill > 0) {
+                      canvas.drawRect(cx + 40 + (barWidth - 40 - rightFill), barY, cx + barWidth, barY + barHeight, paint)
+                  }
+
+                  // 4. 文字情報（バッファを意識した配置）
+                  
+                  // 速度 (中央、大きく)
+                  speedPaint.textSize = min(width, height) * 0.25f
+                  // テキストの垂直センタリング補正
+                  val textHeight = speedPaint.descent() - speedPaint.ascent()
+                  val textOffset = (textHeight / 2) - speedPaint.descent()
+                  canvas.drawText(speed.toInt().toString(), cx, cy + textOffset - 20f, speedPaint)
+
+                  // 単位 "KM/H" (速度の下、十分なマージン)
+                  labelPaint.textSize = min(width, height) * 0.08f
+                  labelPaint.color = if (mode == 0) COLOR_COPPER else COLOR_KRYPTONITE
+                  canvas.drawText("KM/H", cx, cy + r * 0.6f, labelPaint)
+                  
+                  // モード (上部、十分なマージン)
+                  modePaint.textSize = min(width, height) * 0.06f
+                  val modeText = if (mode == 0) "COMFORT" else "SPORT"
+                  canvas.drawText(modeText, cx, cy - r * 0.6f, modePaint)
               }
           }
           EOF
 
-          # 2. LionService (UI Logic with Notification Fix)
-          cat > app/src/main/java/jp/kazukun/peugeot/finalcockpit/LionService.kt <<EOF
+          # 2. MainActivity (スマホ側: 高速更新 60fps)
+          cat > app/src/main/java/jp/kazukun/peugeot/stable/MainActivity.kt <<EOF
+          package $PKG
+          import android.Manifest
+          import android.content.Context
+          import android.content.Intent
+          import android.content.pm.PackageManager
+          import android.graphics.Canvas
+          import android.location.Location
+          import android.location.LocationListener
+          import android.location.LocationManager
+          import android.os.Build
+          import android.os.Bundle
+          import android.view.View
+          import android.view.WindowManager
+          import androidx.appcompat.app.AppCompatActivity
+          import androidx.core.app.ActivityCompat
+          import androidx.core.content.ContextCompat
+
+          class PhoneCockpitView(context: Context) : View(context) {
+              private val renderer = CockpitRenderer()
+              var currentSpeed = 0f
+              var currentMode = 0
+              var time = 0.0
+              
+              override fun onDraw(canvas: Canvas) {
+                  super.onDraw(canvas)
+                  renderer.draw(canvas, width, height, currentSpeed, currentMode, time)
+                  // スマホは滑らかに動かす
+                  time += 0.05
+                  invalidate() 
+              }
+          }
+
+          class MainActivity : AppCompatActivity(), LocationListener {
+              private lateinit var cockpitView: PhoneCockpitView
+              private var locationManager: LocationManager? = null
+
+              override fun onCreate(savedInstanceState: Bundle?) {
+                  super.onCreate(savedInstanceState)
+                  window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                  cockpitView = PhoneCockpitView(this)
+                  setContentView(cockpitView)
+                  
+                  cockpitView.setOnClickListener {
+                      cockpitView.currentMode = (cockpitView.currentMode + 1) % 2
+                  }
+                  checkPermissions()
+              }
+
+              private fun checkPermissions() {
+                  val perms = mutableListOf(Manifest.permission.ACCESS_FINE_LOCATION)
+                  if (Build.VERSION.SDK_INT >= 33) perms.add(Manifest.permission.POST_NOTIFICATIONS)
+                  
+                  val missing = perms.filter { ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED }
+                  if (missing.isNotEmpty()) {
+                      ActivityCompat.requestPermissions(this, missing.toTypedArray(), 99)
+                  } else {
+                      startServices()
+                  }
+              }
+
+              override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+                  super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+                  if (grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }) {
+                      startServices()
+                  }
+              }
+
+              private fun startServices() {
+                  locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
+                  try {
+                      locationManager?.requestLocationUpdates(LocationManager.GPS_PROVIDER, 100, 0f, this)
+                  } catch (e: SecurityException) { e.printStackTrace() }
+
+                  try {
+                      val intent = Intent(this, LionService::class.java)
+                      if (Build.VERSION.SDK_INT >= 26) startForegroundService(intent) else startService(intent)
+                  } catch (e: Exception) { e.printStackTrace() }
+              }
+
+              override fun onLocationChanged(location: Location) {
+                  cockpitView.currentSpeed = location.speed * 3.6f
+              }
+              
+              override fun onStatusChanged(p: String?, s: Int, e: Bundle?) {}
+              override fun onProviderEnabled(p: String) {}
+              override fun onProviderDisabled(p: String) {}
+          }
+          EOF
+
+          # 3. LionService (Android Auto側: 帯域制限 1fps)
+          cat > app/src/main/java/jp/kazukun/peugeot/stable/LionService.kt <<EOF
           package $PKG
 
           import android.Manifest
-          import android.app.Notification
           import android.app.NotificationChannel
           import android.app.NotificationManager
           import android.content.Context
           import android.content.pm.PackageManager
-          import android.graphics.*
+          import android.graphics.Bitmap
+          import android.graphics.Canvas
           import android.location.Location
           import android.location.LocationListener
           import android.location.LocationManager
@@ -245,105 +424,74 @@ jobs:
           import androidx.core.content.ContextCompat
           import androidx.media.MediaBrowserServiceCompat
           import kotlinx.coroutines.*
-          import java.util.*
-          import kotlin.math.*
 
           class LionService : MediaBrowserServiceCompat(), LocationListener {
               private lateinit var mediaSession: MediaSessionCompat
               private var locationManager: LocationManager? = null
               private val renderScope = CoroutineScope(Dispatchers.Default + Job())
-              private var isRunning = false
               
-              private var currentSpeed = 0f
-              private var modeIndex = 0
-              
-              // Colors
-              private val COLOR_ONYX = Color.BLACK
-              private val COLOR_COPPER = Color.rgb(205, 167, 120)
-              private val COLOR_KRYPTONITE = Color.rgb(208, 255, 20)
-              private val COLOR_ICE = Color.WHITE
-
-              private val WIDTH = 400
-              private val HEIGHT = 400
+              private val renderer = CockpitRenderer()
+              // ★重要: Auto用は解像度を抑えて通信負荷を下げる
+              private val WIDTH = 320
+              private val HEIGHT = 320
               private val bitmap = Bitmap.createBitmap(WIDTH, HEIGHT, Bitmap.Config.ARGB_8888)
               private val canvas = Canvas(bitmap)
-              private val paint = Paint().apply { isAntiAlias = true }
-              private val speedPaint = Paint().apply {
-                  isAntiAlias = true
-                  color = COLOR_ICE
-                  textSize = 80f
-                  textAlign = Paint.Align.CENTER
-                  typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
-              }
-              private val labelPaint = Paint().apply {
-                  isAntiAlias = true
-                  color = COLOR_COPPER
-                  textSize = 24f
-                  textAlign = Paint.Align.CENTER
-              }
+              
+              private var currentSpeed = 0f
+              private var currentMode = 0
+              private var time = 0.0
 
               override fun onCreate() {
                   super.onCreate()
-                  
-                  // ★最重要修正: サービス起動時に通知を出す（これがないと強制終了される）
-                  startForegroundServiceNotification()
+                  startForegroundNotification()
 
-                  mediaSession = MediaSessionCompat(this, "LionSession").apply {
+                  mediaSession = MediaSessionCompat(this, "PeugeotSession").apply {
                       setCallback(object : MediaSessionCompat.Callback() {
-                          override fun onPlay() { updateMode(1) }
-                          override fun onPause() { updateMode(1) }
-                          override fun onSkipToNext() { updateMode(1) }
-                          override fun onSkipToPrevious() { updateMode(-1) }
+                          override fun onPlay() { currentMode = (currentMode+1)%2; updateMetadata() }
+                          override fun onPause() { currentMode = (currentMode+1)%2; updateMetadata() }
+                          override fun onSkipToNext() { currentMode = (currentMode+1)%2; updateMetadata() }
                       })
                       isActive = true
-                      // 即座に再生状態にしてUIを表示させる
+                      // 即座にPlaying状態にする
                       setPlaybackState(PlaybackStateCompat.Builder()
                           .setActions(PlaybackStateCompat.ACTION_PLAY or PlaybackStateCompat.ACTION_PAUSE or PlaybackStateCompat.ACTION_SKIP_TO_NEXT)
                           .setState(PlaybackStateCompat.STATE_PLAYING, 0L, 1.0f)
                           .build())
-                      
-                      drawCockpit()
-                      updateMetadata()
+                      sessionToken = mediaSession.sessionToken
                   }
-                  sessionToken = mediaSession.sessionToken
                   
                   setupLocation()
-                  startLoop()
+                  
+                  renderScope.launch {
+                      while (isActive) {
+                          updateMetadata()
+                          time += 0.5 
+                          // ★重要: 通信が間に合うように1秒待機 (1fps)
+                          delay(1000)
+                      }
+                  }
               }
 
-              // ★通知作成メソッド
-              private fun startForegroundServiceNotification() {
-                  val channelId = "cockpit_channel"
-                  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                      val channel = NotificationChannel(channelId, "Cockpit Service", NotificationManager.IMPORTANCE_LOW)
-                      getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
+              private fun startForegroundNotification() {
+                  val chId = "peugeot_srv"
+                  if (Build.VERSION.SDK_INT >= 26) {
+                      val ch = NotificationChannel(chId, "Cockpit", NotificationManager.IMPORTANCE_LOW)
+                      getSystemService(NotificationManager::class.java).createNotificationChannel(ch)
                   }
-                  
-                  val notification: Notification = NotificationCompat.Builder(this, channelId)
+                  val notif = NotificationCompat.Builder(this, chId)
                       .setContentTitle("i-Cockpit Active")
-                      .setContentText("Peugeot Style Dashboard is Running")
                       .setSmallIcon(android.R.drawable.ic_media_play)
                       .setOngoing(true)
                       .build()
-
-                  // Android 14対応: タイプを指定して開始
                   try {
                       if (Build.VERSION.SDK_INT >= 34) {
-                          startForeground(1001, notification, 
+                          startForeground(102, notif, 
                               android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK or 
                               android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION)
                       } else {
-                          startForeground(1001, notification)
+                          startForeground(102, notif)
                       }
-                  } catch (e: Exception) {
-                      e.printStackTrace()
-                  }
-              }
-
-              private fun updateMode(delta: Int) {
-                  modeIndex = (modeIndex + delta).absoluteValue % 2
-                  drawCockpit()
-                  updateMetadata()
+                  } catch (e: Exception) { e.printStackTrace() }
               }
 
               private fun setupLocation() {
@@ -355,95 +503,38 @@ jobs:
                   }
               }
 
-              private fun startLoop() {
-                  isRunning = true
-                  renderScope.launch {
-                      while (isActive && isRunning) {
-                          drawCockpit()
-                          withContext(Dispatchers.Main) {
-                              updateMetadata()
-                          }
-                          delay(500) 
-                      }
-                  }
-              }
-
-              private fun drawCockpit() {
-                  canvas.drawColor(COLOR_ONYX)
-                  val cx = WIDTH / 2f
-                  val cy = HEIGHT / 2f
-                  
-                  paint.style = Paint.Style.STROKE
-                  paint.strokeWidth = 6f
-                  paint.color = if (modeIndex == 0) COLOR_COPPER else COLOR_KRYPTONITE
-                  
-                  val path = Path()
-                  val r = 180f
-                  for (i in 0..6) {
-                      val angle = Math.toRadians((i * 60 - 30).toDouble())
-                      val x = cx + r * cos(angle).toFloat()
-                      val y = cy + r * sin(angle).toFloat()
-                      if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
-                  }
-                  path.close()
-                  canvas.drawPath(path, paint)
-
-                  paint.style = Paint.Style.FILL
-                  paint.strokeWidth = 0f
-                  val speedRatio = (currentSpeed / 180f).coerceIn(0f, 1f)
-                  
-                  paint.color = Color.DKGRAY
-                  canvas.drawRect(cx - 150, cy + 80, cx - 50, cy + 90, paint)
-                  paint.color = COLOR_ICE
-                  canvas.drawRect(cx - 150, cy + 80, cx - 150 + (100 * speedRatio), cy + 90, paint)
-                  
-                  paint.color = Color.DKGRAY
-                  canvas.drawRect(cx + 50, cy + 80, cx + 150, cy + 90, paint)
-                  paint.color = COLOR_ICE
-                  canvas.drawRect(cx + 150 - (100 * speedRatio), cy + 80, cx + 150, cy + 90, paint)
-
-                  val speedText = currentSpeed.toInt().toString()
-                  canvas.drawText(speedText, cx, cy + 30, speedPaint)
-
-                  labelPaint.color = if (modeIndex == 0) COLOR_COPPER else COLOR_KRYPTONITE
-                  canvas.drawText("KM/H", cx, cy + 130, labelPaint)
-                  
-                  val modeText = if (modeIndex == 0) "COMFORT" else "SPORT"
-                  canvas.drawText(modeText, cx, cy - 100, labelPaint)
+              override fun onLocationChanged(location: Location) {
+                  currentSpeed = location.speed * 3.6f
+                  // 描画はループ側で制御するのでここでは値更新のみ
               }
 
               private fun updateMetadata() {
-                  val metadata = MediaMetadataCompat.Builder()
+                  // Canvasをクリアして再描画
+                  renderer.draw(canvas, WIDTH, HEIGHT, currentSpeed, currentMode, time)
+                  
+                  // $のエスケープを忘れずに
+                  val meta = MediaMetadataCompat.Builder()
                       .putString(MediaMetadataCompat.METADATA_KEY_TITLE, "i-Cockpit")
-                      // Kotlinエスケープ: $ -> \$
                       .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, "\${currentSpeed.toInt()} km/h")
                       .putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, bitmap)
                       .build()
-                  mediaSession.setMetadata(metadata)
+                  
+                  try {
+                      mediaSession.setMetadata(meta)
+                  } catch (e: Exception) {
+                      // 転送失敗時の安全策
+                  }
               }
 
-              override fun onLocationChanged(location: Location) {
-                  currentSpeed = location.speed * 3.6f
-                  drawCockpit()
-                  updateMetadata()
-              }
-
-              // ★重要: これがAndroid Auto接続許可の鍵
-              override fun onGetRoot(clientPackageName: String, clientUid: Int, rootHints: Bundle?): BrowserRoot {
-                  // 全てのクライアント（Android Auto含む）を許可する
-                  return BrowserRoot("ROOT", null)
-              }
-              
-              // ★重要: ここで即座に結果を返さないと無限ローディングになる
               override fun onLoadChildren(parentId: String, result: Result<MutableList<MediaBrowserCompat.MediaItem>>) {
                   result.sendResult(mutableListOf())
               }
-              
+              override fun onGetRoot(pkg: String, uid: Int, root: Bundle?): BrowserRoot {
+                  return BrowserRoot("ROOT", null)
+              }
               override fun onDestroy() {
-                  isRunning = false
                   renderScope.cancel()
                   locationManager?.removeUpdates(this)
-                  mediaSession.isActive = false
                   mediaSession.release()
                   super.onDestroy()
               }
@@ -462,5 +553,5 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Peugeot-FinalFix-APK
+          name: Peugeot-Stable-APK
           path: app/build/outputs/apk/debug/app-debug.apk
