@@ -1,4 +1,4 @@
-name: Build Peugeot Strict Compliance
+name: Build Peugeot Production Ready
 
 on:
   workflow_dispatch:
@@ -20,26 +20,30 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      # ★要件準拠: AGP 8.3.0 に最適な Gradle 8.4 を指定
-      - name: Install Gradle 8.4
+      # ★安定構成: AGP 8.2.0 に適合する Gradle 8.2 を使用
+      - name: Install Gradle 8.2
         shell: bash
         run: |
           set -euxo pipefail
-          wget -q https://services.gradle.org/distributions/gradle-8.4-bin.zip
-          unzip -q gradle-8.4-bin.zip
-          echo "$PWD/gradle-8.4/bin" >> $GITHUB_PATH
+          wget -q https://services.gradle.org/distributions/gradle-8.2-bin.zip
+          unzip -q gradle-8.2-bin.zip
+          echo "$PWD/gradle-8.2/bin" >> $GITHUB_PATH
 
       - name: Generate Project Files
         shell: bash
         run: |
           set -euxo pipefail
 
-          # パッケージ名 (クリーンインストール用)
-          PKG="jp.kazukun.peugeot.strict"
+          # 変数定義（設定ファイル用）
+          PKG="jp.kazukun.peugeot.production"
           APP_LABEL="i-Cockpit"
 
-          # 1. settings.gradle (EOFクォートで保護)
-          cat > settings.gradle.kts <<'EOF'
+          # ---------------------------------------------------------
+          # 1. 設定ファイル群 (変数展開が必要なので <<EOF を使用)
+          # ---------------------------------------------------------
+
+          # settings.gradle.kts
+          cat > settings.gradle.kts <<EOF
           pluginManagement {
               repositories {
                   google()
@@ -54,20 +58,20 @@ jobs:
                   mavenCentral()
               }
           }
-          rootProject.name = "PeugeotStrict"
+          rootProject.name = "PeugeotProduction"
           include(":app")
           EOF
 
-          # 2. build.gradle (Project) - AGP 8.3.0
-          cat > build.gradle.kts <<'EOF'
+          # build.gradle.kts (Project) - 安定版 AGP 8.2.0
+          cat > build.gradle.kts <<EOF
           plugins {
-              id("com.android.application") version "8.3.0" apply false
-              id("org.jetbrains.kotlin.android") version "1.9.23" apply false
+              id("com.android.application") version "8.2.0" apply false
+              id("org.jetbrains.kotlin.android") version "1.9.20" apply false
           }
           EOF
 
-          # 3. gradle.properties (メモリ最適化)
-          cat > gradle.properties <<'EOF'
+          # gradle.properties
+          cat > gradle.properties <<EOF
           org.gradle.jvmargs=-Xmx4g -XX:+UseParallelGC
           android.useAndroidX=true
           android.enableJetifier=true
@@ -75,9 +79,10 @@ jobs:
           android.nonTransitiveRClass=true
           EOF
 
-          # 4. App Module
-          mkdir -p app/src/main/{java/jp/kazukun/peugeot/strict,res/xml,res/values,res/drawable,res/mipmap-anydpi-v26}
+          # アプリ用ディレクトリ作成
+          mkdir -p app/src/main/{java/jp/kazukun/peugeot/production,res/xml,res/values,res/drawable,res/mipmap-anydpi-v26}
 
+          # build.gradle.kts (App Module)
           cat > app/build.gradle.kts <<EOF
           plugins {
               id("com.android.application")
@@ -93,7 +98,7 @@ jobs:
                   minSdk = 26
                   targetSdk = 34
                   versionCode = 1
-                  versionName = "1.0.Strict"
+                  versionName = "1.0.Prod"
               }
               buildTypes {
                   release { isMinifyEnabled = false }
@@ -108,21 +113,21 @@ jobs:
           dependencies {
               implementation("androidx.core:core-ktx:1.12.0")
               implementation("androidx.appcompat:appcompat:1.6.1")
-              // ★要件準拠: MediaBrowserServiceCompatのために必須
+              // MediaBrowserServiceCompat (必須)
               implementation("androidx.media:media:1.7.0")
               implementation("com.google.android.gms:play-services-location:21.0.1")
               implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
           }
           EOF
 
-          # --- Resources ---
+          # strings.xml
           cat > app/src/main/res/values/strings.xml <<EOF
           <resources>
               <string name="app_name">$APP_LABEL</string>
           </resources>
           EOF
 
-          # ★要件準拠: 自動車用機能記述ファイル (Mediaカテゴリ)
+          # automotive_app_desc.xml (レポート準拠: Media)
           cat > app/src/main/res/xml/automotive_app_desc.xml <<EOF
           <?xml version="1.0" encoding="utf-8"?>
           <automotiveApp xmlns:android="http://schemas.android.com/apk/res/android">
@@ -130,33 +135,10 @@ jobs:
           </automotiveApp>
           EOF
 
-          # Icons (Vector format compliance)
-          cat > app/src/main/res/drawable/ic_launcher_background.xml <<'EOF'
-          <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
-              <path android:fillColor="#000000" android:pathData="M0,0h108v108h-108z"/>
-          </vector>
-          EOF
-          
-          # Peugeot-style shield icon
-          cat > app/src/main/res/drawable/ic_launcher_foreground.xml <<'EOF'
-          <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
-              <path android:fillColor="#CDA778" android:pathData="M54,18 L24,30 L30,75 L54,90 L78,75 L84,30 L54,18 Z M54,28 L74,38 L70,70 L54,80 L38,70 L34,38 L54,28 Z"/>
-          </vector>
-          EOF
-          
-          cat > app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml <<'EOF'
-          <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
-              <background android:drawable="@drawable/ic_launcher_background"/>
-              <foreground android:drawable="@drawable/ic_launcher_foreground"/>
-          </adaptive-icon>
-          EOF
-          cp app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml
-
-          # Manifest (Strict Compliance)
+          # Manifest
           cat > app/src/main/AndroidManifest.xml <<EOF
           <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="$PKG">
-              
               <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
               <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
               <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
@@ -165,8 +147,6 @@ jobs:
               <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
               
               <uses-feature android:name="android.hardware.type.automotive" android:required="false" />
-              <uses-feature android:name="android.hardware.wifi" android:required="false" />
-              <uses-feature android:name="android.hardware.screen.portrait" android:required="false" />
 
               <application
                   android:label="$APP_LABEL"
@@ -202,17 +182,41 @@ jobs:
           </manifest>
           EOF
 
-          # --- Kotlin Code (EOF protection active) ---
+          # アイコン群（クォート付きEOFで保護しても変数は使っていないのでOK）
+          cat > app/src/main/res/drawable/ic_launcher_background.xml <<'EOF'
+          <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+              <path android:fillColor="#000000" android:pathData="M0,0h108v108h-108z"/>
+          </vector>
+          EOF
+          
+          cat > app/src/main/res/drawable/ic_launcher_foreground.xml <<'EOF'
+          <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+              <path android:fillColor="#CDA778" android:pathData="M54,18 L24,30 L30,75 L54,90 L78,75 L84,30 L54,18 Z M54,28 L74,38 L70,70 L54,80 L38,70 L34,38 L54,28 Z"/>
+          </vector>
+          EOF
+          
+          cat > app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml <<'EOF'
+          <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+              <background android:drawable="@drawable/ic_launcher_background"/>
+              <foreground android:drawable="@drawable/ic_launcher_foreground"/>
+          </adaptive-icon>
+          EOF
+          cp app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml
 
-          # 1. CockpitRenderer (Peugeot Design Engine)
-          cat > app/src/main/java/jp/kazukun/peugeot/strict/CockpitRenderer.kt <<'EOF'
-          package jp.kazukun.peugeot.strict
+
+          # ---------------------------------------------------------
+          # 2. Kotlinソースコード (<<'EOF' で完全保護)
+          # ※パッケージ名はハードコードして整合性を保つ
+          # ---------------------------------------------------------
+
+          # 1. CockpitRenderer.kt
+          cat > app/src/main/java/jp/kazukun/peugeot/production/CockpitRenderer.kt <<'EOF'
+          package jp.kazukun.peugeot.production
           import android.graphics.*
           import kotlin.math.*
 
           class CockpitRenderer {
-              // Peugeot Brand Colors
-              private val COLOR_ONYX = Color.BLACK
+              // Peugeot Colors
               private val COLOR_COPPER = Color.rgb(205, 167, 120)
               private val COLOR_KRYPTONITE = Color.rgb(208, 255, 20)
               private val COLOR_ICE = Color.WHITE
@@ -246,7 +250,7 @@ jobs:
                   val cy = height / 2f
                   val r = min(width, height) * 0.45f
                   
-                  // Background
+                  // 背景グラデーション
                   val shader = LinearGradient(0f, 0f, 0f, height.toFloat(),
                       intArrayOf(Color.BLACK, Color.parseColor("#1a1a1a"), Color.BLACK),
                       null, Shader.TileMode.CLAMP)
@@ -255,7 +259,7 @@ jobs:
                   canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paint)
                   paint.shader = null
 
-                  // Hexagon Frame
+                  // 六角形フレーム
                   paint.style = Paint.Style.STROKE
                   paint.strokeWidth = 6f
                   paint.color = if (mode == 0) COLOR_COPPER else COLOR_KRYPTONITE
@@ -271,7 +275,7 @@ jobs:
                   path.close()
                   canvas.drawPath(path, paint)
 
-                  // Speed Claws
+                  // 速度バー (Claws)
                   paint.style = Paint.Style.FILL
                   paint.strokeWidth = 0f
                   val speedRatio = (speed / 180f).coerceIn(0f, 1f)
@@ -295,7 +299,7 @@ jobs:
                       canvas.drawRect(cx + 40f + (barWidth - 40f - rightFill), barY, cx + barWidth, barY + barHeight, paint)
                   }
 
-                  // Text Info
+                  // 文字情報
                   speedPaint.textSize = min(width, height) * 0.25f
                   val textHeight = speedPaint.descent() - speedPaint.ascent()
                   val textOffset = (textHeight / 2) - speedPaint.descent()
@@ -314,9 +318,9 @@ jobs:
           }
           EOF
 
-          # 2. MainActivity
-          cat > app/src/main/java/jp/kazukun/peugeot/strict/MainActivity.kt <<'EOF'
-          package jp.kazukun.peugeot.strict
+          # 2. MainActivity.kt
+          cat > app/src/main/java/jp/kazukun/peugeot/production/MainActivity.kt <<'EOF'
+          package jp.kazukun.peugeot.production
           import android.Manifest
           import android.content.Context
           import android.content.Intent
@@ -403,9 +407,9 @@ jobs:
           }
           EOF
 
-          # 3. LionService (Compliance: Correct Imports & Exported)
-          cat > app/src/main/java/jp/kazukun/peugeot/strict/LionService.kt <<'EOF'
-          package jp.kazukun.peugeot.strict
+          # 3. LionService.kt (1fps制限, メタデータ更新方式)
+          cat > app/src/main/java/jp/kazukun/peugeot/production/LionService.kt <<'EOF'
+          package jp.kazukun.peugeot.production
 
           import android.Manifest
           import android.app.NotificationChannel
@@ -420,7 +424,6 @@ jobs:
           import android.os.Build
           import android.os.Bundle
           
-          // AndroidX Imports
           import androidx.media.MediaBrowserServiceCompat
           import android.support.v4.media.MediaBrowserCompat
           import android.support.v4.media.MediaMetadataCompat
@@ -437,6 +440,7 @@ jobs:
               private val renderScope = CoroutineScope(Dispatchers.Default + Job())
               
               private val renderer = CockpitRenderer()
+              // 通信負荷対策: 320px
               private val WIDTH = 320
               private val HEIGHT = 320
               private val bitmap = Bitmap.createBitmap(WIDTH, HEIGHT, Bitmap.Config.ARGB_8888)
@@ -466,7 +470,7 @@ jobs:
                   
                   setupLocation()
                   
-                  // Traffic Control: 1fps
+                  // Auto用ループ: 1秒間隔 (1fps) で通信保護
                   renderScope.launch {
                       while (isActive) {
                           updateMetadata()
@@ -534,8 +538,6 @@ jobs:
               override fun onLoadChildren(parentId: String, result: Result<MutableList<MediaBrowserCompat.MediaItem>>) {
                   result.sendResult(mutableListOf())
               }
-              
-              // ★要件準拠: Android Autoからの接続を許可
               override fun onGetRoot(clientPackageName: String, clientUid: Int, rootHints: Bundle?): BrowserRoot? {
                   return BrowserRoot("ROOT", null)
               }
@@ -555,10 +557,11 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          ./gradlew assembleDebug --no-daemon
+          # 手動インストールしたGradleを使用
+          gradle assembleDebug --no-daemon
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Peugeot-Strict-APK
+          name: Peugeot-Production-APK
           path: app/build/outputs/apk/debug/app-debug.apk
