@@ -1,4 +1,4 @@
-name: Build Peugeot Robust Cockpit
+name: Build Peugeot Immutable Cockpit
 
 on:
   workflow_dispatch:
@@ -33,12 +33,12 @@ jobs:
         run: |
           set -euxo pipefail
 
-          # パッケージ名を変更 (キャッシュ汚染回避)
-          PKG="jp.kazukun.peugeot.robust"
+          # パッケージ名
+          PKG="jp.kazukun.peugeot.immutable"
           APP_LABEL="i-Cockpit"
 
           # 1. Settings
-          cat > settings.gradle.kts <<EOF
+          cat > settings.gradle.kts <<'EOF'
           pluginManagement {
               repositories {
                   google()
@@ -53,12 +53,12 @@ jobs:
                   mavenCentral()
               }
           }
-          rootProject.name = "PeugeotRobust"
+          rootProject.name = "PeugeotImmutable"
           include(":app")
           EOF
 
-          # 2. Build Gradle (Project)
-          cat > build.gradle.kts <<EOF
+          # 2. Build Gradle
+          cat > build.gradle.kts <<'EOF'
           plugins {
               id("com.android.application") version "8.3.0" apply false
               id("org.jetbrains.kotlin.android") version "1.9.23" apply false
@@ -66,7 +66,7 @@ jobs:
           EOF
 
           # 3. Gradle Properties
-          cat > gradle.properties <<EOF
+          cat > gradle.properties <<'EOF'
           org.gradle.jvmargs=-Xmx4g -XX:+UseParallelGC
           android.useAndroidX=true
           android.enableJetifier=true
@@ -75,7 +75,7 @@ jobs:
           EOF
 
           # 4. App Module
-          mkdir -p app/src/main/{java/jp/kazukun/peugeot/robust,res/xml,res/values,res/drawable,res/mipmap-anydpi-v26}
+          mkdir -p app/src/main/{java/jp/kazukun/peugeot/immutable,res/xml,res/values,res/drawable,res/mipmap-anydpi-v26}
 
           cat > app/build.gradle.kts <<EOF
           plugins {
@@ -92,7 +92,7 @@ jobs:
                   minSdk = 26
                   targetSdk = 34
                   versionCode = 1
-                  versionName = "1.0.Robust"
+                  versionName = "1.0.Immutable"
               }
               buildTypes {
                   release { isMinifyEnabled = false }
@@ -127,18 +127,20 @@ jobs:
           </automotiveApp>
           EOF
 
-          # Icons (Peugeot Style)
-          cat > app/src/main/res/drawable/ic_launcher_background.xml <<EOF
+          # Icons
+          cat > app/src/main/res/drawable/ic_launcher_background.xml <<'EOF'
           <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
               <path android:fillColor="#000000" android:pathData="M0,0h108v108h-108z"/>
           </vector>
           EOF
-          cat > app/src/main/res/drawable/ic_launcher_foreground.xml <<EOF
+          
+          cat > app/src/main/res/drawable/ic_launcher_foreground.xml <<'EOF'
           <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
               <path android:fillColor="#CDA778" android:pathData="M54,18 L24,30 L30,75 L54,90 L78,75 L84,30 L54,18 Z M54,28 L74,38 L70,70 L54,80 L38,70 L34,38 L54,28 Z"/>
           </vector>
           EOF
-          cat > app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml <<EOF
+          
+          cat > app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml <<'EOF'
           <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
               <background android:drawable="@drawable/ic_launcher_background"/>
               <foreground android:drawable="@drawable/ic_launcher_foreground"/>
@@ -190,15 +192,13 @@ jobs:
           </manifest>
           EOF
 
-          # --- Kotlin Code ---
+          # --- Kotlin Code (ここから <<'EOF' を使うので、$のエスケープは不要になります) ---
 
-          # 1. CockpitRenderer (FIX: Imports, Escaped Shell Vars)
-          cat > app/src/main/java/jp/kazukun/peugeot/robust/CockpitRenderer.kt <<EOF
-          package $PKG
+          # 1. CockpitRenderer
+          cat > app/src/main/java/jp/kazukun/peugeot/immutable/CockpitRenderer.kt <<'EOF'
+          package jp.kazukun.peugeot.immutable
           import android.graphics.*
-          import kotlin.math.* // 重要: 数学関数のインポート
-
-          class CockpitRenderer {
+          import kotlin.math.* class CockpitRenderer {
               // Peugeot Color Palette
               private val COLOR_ONYX = Color.BLACK
               private val COLOR_COPPER = Color.rgb(205, 167, 120)
@@ -208,7 +208,6 @@ jobs:
 
               private val paint = Paint().apply { isAntiAlias = true }
               
-              // フォント設定 (文字バッファ確保)
               private val speedPaint = Paint().apply {
                   isAntiAlias = true
                   color = COLOR_ICE
@@ -252,7 +251,7 @@ jobs:
                   
                   val path = Path()
                   for (i in 0..6) {
-                      val angle = (i * 60 - 30) * (PI / 180.0) // kotlin.mathを使用
+                      val angle = (i * 60 - 30) * (PI / 180.0)
                       val x = cx + r * cos(angle).toFloat()
                       val y = cy + r * sin(angle).toFloat()
                       if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
@@ -270,27 +269,27 @@ jobs:
                   
                   // 左
                   paint.color = COLOR_METAL
-                  canvas.drawRect(cx - barWidth, barY, cx - 40, barY + barHeight, paint)
+                  canvas.drawRect(cx - barWidth, barY, cx - 40f, barY + barHeight, paint)
                   paint.color = if (mode == 0) COLOR_ICE else COLOR_KRYPTONITE
-                  val leftFill = (barWidth - 40) * speedRatio
+                  val leftFill = (barWidth - 40f) * speedRatio
                   if (leftFill > 0) {
                       canvas.drawRect(cx - barWidth, barY, cx - barWidth + leftFill, barY + barHeight, paint)
                   }
 
                   // 右
                   paint.color = COLOR_METAL
-                  canvas.drawRect(cx + 40, barY, cx + barWidth, barY + barHeight, paint)
+                  canvas.drawRect(cx + 40f, barY, cx + barWidth, barY + barHeight, paint)
                   paint.color = if (mode == 0) COLOR_ICE else COLOR_KRYPTONITE
-                  val rightFill = (barWidth - 40) * speedRatio
+                  val rightFill = (barWidth - 40f) * speedRatio
                   if (rightFill > 0) {
-                      canvas.drawRect(cx + 40 + (barWidth - 40 - rightFill), barY, cx + barWidth, barY + barHeight, paint)
+                      canvas.drawRect(cx + 40f + (barWidth - 40f - rightFill), barY, cx + barWidth, barY + barHeight, paint)
                   }
 
                   // 4. 文字情報
                   speedPaint.textSize = min(width, height) * 0.25f
                   val textHeight = speedPaint.descent() - speedPaint.ascent()
                   val textOffset = (textHeight / 2) - speedPaint.descent()
-                  // toString()のエスケープは不要だが、念のため安全に記述
+                  
                   val speedStr = speed.toInt().toString()
                   canvas.drawText(speedStr, cx, cy + textOffset - 20f, speedPaint)
 
@@ -306,8 +305,8 @@ jobs:
           EOF
 
           # 2. MainActivity
-          cat > app/src/main/java/jp/kazukun/peugeot/robust/MainActivity.kt <<EOF
-          package $PKG
+          cat > app/src/main/java/jp/kazukun/peugeot/immutable/MainActivity.kt <<'EOF'
+          package jp.kazukun.peugeot.immutable
           import android.Manifest
           import android.content.Context
           import android.content.Intent
@@ -395,9 +394,9 @@ jobs:
           }
           EOF
 
-          # 3. LionService (FIX: Escaping, Try-Catch, Traffic Control)
-          cat > app/src/main/java/jp/kazukun/peugeot/robust/LionService.kt <<EOF
-          package $PKG
+          # 3. LionService
+          cat > app/src/main/java/jp/kazukun/peugeot/immutable/LionService.kt <<'EOF'
+          package jp.kazukun.peugeot.immutable
 
           import android.Manifest
           import android.app.NotificationChannel
@@ -510,16 +509,14 @@ jobs:
                       // Canvas描画
                       renderer.draw(canvas, WIDTH, HEIGHT, currentSpeed, currentMode, time)
                       
-                      // エスケープ処理: \$ を使用してシェル展開を回避
                       val meta = MediaMetadataCompat.Builder()
                           .putString(MediaMetadataCompat.METADATA_KEY_TITLE, "i-Cockpit")
-                          .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, "\${currentSpeed.toInt()} km/h")
+                          .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, "${currentSpeed.toInt()} km/h")
                           .putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, bitmap)
                           .build()
                       
                       mediaSession.setMetadata(meta)
                   } catch (e: Exception) {
-                      // エラー発生時もクラッシュさせない
                       e.printStackTrace()
                   }
               }
@@ -551,5 +548,5 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Peugeot-Robust-APK
+          name: Peugeot-Immutable-APK
           path: app/build/outputs/apk/debug/app-debug.apk
