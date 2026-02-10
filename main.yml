@@ -1,4 +1,4 @@
-name: Build Ambient Cockpit (UI/UX Optimized)
+name: Build Ambient Flow (Parking Mode)
 
 on:
   workflow_dispatch:
@@ -20,24 +20,21 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install Gradle 8.6
-        shell: bash
-        run: |
-          set -euxo pipefail
-          wget -q https://services.gradle.org/distributions/gradle-8.6-bin.zip
-          unzip -q gradle-8.6-bin.zip
-          echo "$PWD/gradle-8.6/bin" >> $GITHUB_PATH
+      - name: Setup Gradle 8.4 (安定版)
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: 8.4
 
       - name: Generate Project Files
         shell: bash
         run: |
           set -euxo pipefail
 
-          PKG="jp.kazukun.ambient.cockpit"
-          APP_LABEL="Ambient Cockpit"
+          PKG="jp.kazukun.peugeot.final"
+          APP_LABEL="Ambient Flow"
 
-          # 1. Settings
-          cat > settings.gradle.kts <<EOF
+          # ===== settings.gradle.kts =====
+          cat > settings.gradle.kts <<'EOF'
           pluginManagement {
               repositories {
                   google()
@@ -52,20 +49,20 @@ jobs:
                   mavenCentral()
               }
           }
-          rootProject.name = "AmbientCockpit"
+          rootProject.name = "AmbientFlow"
           include(":app")
           EOF
 
-          # 2. Build Gradle (Project)
-          cat > build.gradle.kts <<EOF
+          # ===== build.gradle.kts (Root) =====
+          cat > build.gradle.kts <<'EOF'
           plugins {
               id("com.android.application") version "8.3.0" apply false
               id("org.jetbrains.kotlin.android") version "1.9.23" apply false
           }
           EOF
 
-          # 3. Gradle Properties
-          cat > gradle.properties <<EOF
+          # ===== gradle.properties =====
+          cat > gradle.properties <<'EOF'
           org.gradle.jvmargs=-Xmx4g -XX:+UseParallelGC
           android.useAndroidX=true
           android.enableJetifier=true
@@ -73,9 +70,11 @@ jobs:
           android.nonTransitiveRClass=true
           EOF
 
-          # 4. App Module
-          mkdir -p app/src/main/{java/jp/kazukun/ambient/cockpit,res/xml,res/values,res/drawable,res/mipmap-anydpi-v26}
+          # ===== Module Structure =====
+          mkdir -p app/src/main/java/jp/kazukun/peugeot/final/ambient
+          mkdir -p app/src/main/res/{xml,values,mipmap-anydpi-v26}
 
+          # ===== app/build.gradle.kts =====
           cat > app/build.gradle.kts <<EOF
           plugins {
               id("com.android.application")
@@ -90,15 +89,14 @@ jobs:
                   applicationId = "$PKG"
                   minSdk = 26
                   targetSdk = 34
-                  versionCode = 3
-                  versionName = "3.0.Cockpit"
+                  versionCode = 1
+                  versionName = "1.0.Ambient"
               }
+
               buildTypes {
-                  release {
-                      isMinifyEnabled = true
-                      proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-                  }
+                  release { isMinifyEnabled = false }
               }
+
               compileOptions {
                   sourceCompatibility = JavaVersion.VERSION_17
                   targetCompatibility = JavaVersion.VERSION_17
@@ -109,60 +107,28 @@ jobs:
           dependencies {
               implementation("androidx.core:core-ktx:1.12.0")
               implementation("androidx.appcompat:appcompat:1.6.1")
-              implementation("androidx.media:media:1.7.0")
-              implementation("com.google.android.gms:play-services-location:21.0.1")
-              implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+
+              // Android Auto (Car App Library)
+              implementation("androidx.car.app:app:1.3.0")
+              implementation("androidx.car.app:app-projected:1.3.0")
+
+              // 状態保存
+              implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
           }
           EOF
 
-          # --- Resources ---
+          # ===== strings.xml =====
           cat > app/src/main/res/values/strings.xml <<EOF
           <resources>
               <string name="app_name">$APP_LABEL</string>
           </resources>
           EOF
 
-          cat > app/src/main/res/xml/automotive_app_desc.xml <<EOF
-          <?xml version="1.0" encoding="utf-8"?>
-          <automotiveApp xmlns:android="http://schemas.android.com/apk/res/android">
-              <uses name="media" />
-          </automotiveApp>
-          EOF
-
-          # Icons (Simple & High Contrast)
-          cat > app/src/main/res/drawable/ic_launcher_background.xml <<EOF
-          <vector xmlns:android="http://schemas.android.com/apk/res/android"
-              android:width="108dp" android:height="108dp"
-              android:viewportWidth="108" android:viewportHeight="108">
-              <path android:fillColor="#000000" android:pathData="M0,0h108v108h-108z"/>
-          </vector>
-          EOF
-          cat > app/src/main/res/drawable/ic_launcher_foreground.xml <<EOF
-          <vector xmlns:android="http://schemas.android.com/apk/res/android"
-              android:width="108dp" android:height="108dp"
-              android:viewportWidth="108" android:viewportHeight="108">
-              <path android:fillColor="#FFFFFF" android:pathData="M54,14 A40,40 0 1,0 54,94 A40,40 0 1,0 54,14 M54,24 A30,30 0 1,1 54,84 A30,30 0 1,1 54,24"/>
-          </vector>
-          EOF
-          cat > app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml <<EOF
-          <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
-              <background android:drawable="@drawable/ic_launcher_background"/>
-              <foreground android:drawable="@drawable/ic_launcher_foreground"/>
-          </adaptive-icon>
-          EOF
-          cp app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml
-
-          # Manifest
+          # ===== AndroidManifest.xml =====
           cat > app/src/main/AndroidManifest.xml <<EOF
           <?xml version="1.0" encoding="utf-8"?>
-          <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="$PKG">
-              
-              <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
-              <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-              <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-              <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
-              <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
-              <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+              package="$PKG">
 
               <application
                   android:label="$APP_LABEL"
@@ -172,250 +138,137 @@ jobs:
                   android:roundIcon="@mipmap/ic_launcher_round"
                   android:theme="@style/Theme.AppCompat.NoActionBar">
 
-                  <meta-data
-                      android:name="com.google.android.gms.car.application"
-                      android:resource="@xml/automotive_app_desc" />
-
+                  <!-- Android Auto (Parking Mode) -->
                   <service
-                      android:name=".CockpitService"
-                      android:exported="true"
-                      android:foregroundServiceType="location|mediaPlayback">
+                      android:name=".ambient.AmbientCarService"
+                      android:exported="true">
                       <intent-filter>
-                          <action android:name="android.media.browse.MediaBrowserService" />
+                          <action android:name="androidx.car.app.CarAppService" />
                       </intent-filter>
                   </service>
 
+                  <!-- デバッグ用（スマホ単体起動） -->
                   <activity
-                      android:name=".MainActivity"
+                      android:name=".ambient.AmbientDebugActivity"
                       android:exported="true"
-                      android:launchMode="singleTop">
+                      android:screenOrientation="landscape">
                       <intent-filter>
                           <action android:name="android.intent.action.MAIN" />
                           <category android:name="android.intent.category.LAUNCHER" />
                       </intent-filter>
                   </activity>
+
               </application>
           </manifest>
           EOF
 
-          # --- Kotlin Code ---
-          # 1. MainActivity
-          cat > app/src/main/java/jp/kazukun/ambient/cockpit/MainActivity.kt <<EOF
-          package $PKG
-          import android.Manifest
-          import android.content.pm.PackageManager
-          import android.os.Build
-          import android.os.Bundle
-          import androidx.appcompat.app.AppCompatActivity
-          import androidx.core.app.ActivityCompat
-          import androidx.core.content.ContextCompat
+          # ===== AmbientCarService.kt =====
+          cat > app/src/main/java/jp/kazukun/peugeot/final/ambient/AmbientCarService.kt <<'EOF'
+          package jp.kazukun.peugeot.final.ambient
 
-          class MainActivity : AppCompatActivity() {
-              override fun onCreate(savedInstanceState: Bundle?) {
-                  super.onCreate(savedInstanceState)
-                  
-                  val perms = mutableListOf(Manifest.permission.ACCESS_FINE_LOCATION)
-                  if (Build.VERSION.SDK_INT >= 33) {
-                      perms.add(Manifest.permission.POST_NOTIFICATIONS)
-                  }
-                  
-                  if (perms.any { ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED }) {
-                      ActivityCompat.requestPermissions(this, perms.toTypedArray(), 99)
-                  }
+          import androidx.car.app.CarAppService
+          import androidx.car.app.Session
+          import androidx.car.app.validation.HostValidator
+
+          class AmbientCarService : CarAppService() {
+              override fun createHostValidator(): HostValidator {
+                  return HostValidator.ALLOW_ALL_HOSTS_VALIDATOR
+              }
+
+              override fun onCreateSession(): Session {
+                  return AmbientSession()
               }
           }
           EOF
 
-          # 2. CockpitService (High-End Visualizer)
-          cat > app/src/main/java/jp/kazukun/ambient/cockpit/CockpitService.kt <<EOF
-          package $PKG
+          # ===== AmbientSession.kt =====
+          cat > app/src/main/java/jp/kazukun/peugeot/final/ambient/AmbientSession.kt <<'EOF'
+          package jp.kazukun.peugeot.final.ambient
 
-          import android.Manifest
-          import android.content.Context
-          import android.content.pm.PackageManager
-          import android.graphics.*
-          import android.location.Location
-          import android.location.LocationListener
-          import android.location.LocationManager
-          import android.os.Bundle
-          import android.support.v4.media.MediaBrowserCompat
-          import android.support.v4.media.MediaMetadataCompat
-          import android.support.v4.media.session.MediaSessionCompat
-          import android.support.v4.media.session.PlaybackStateCompat
-          import androidx.core.content.ContextCompat
-          import androidx.media.MediaBrowserServiceCompat
-          import kotlinx.coroutines.*
-          import java.text.SimpleDateFormat
-          import java.util.*
-          import kotlin.math.*
+          import android.content.Intent
+          import androidx.car.app.Screen
+          import androidx.car.app.Session
 
-          class CockpitService : MediaBrowserServiceCompat(), LocationListener {
-              private lateinit var mediaSession: MediaSessionCompat
-              private var locationManager: LocationManager? = null
-              private val renderScope = CoroutineScope(Dispatchers.Default + Job())
-              private var isRunning = false
-              
-              // 状態
-              private var currentSpeedKmh = 0f
-              private var time = 0.0
-              private var themeIndex = 0
-              
-              // テーマカラー (R, G, B) - ガイドライン準拠のアクセントカラー
-              private val themes = listOf(
-                  Triple(0, 150, 255),   // 1. Cyber Blue (Android Auto Blue)
-                  Triple(255, 140, 0),   // 2. Amber Orange (Warm)
-                  Triple(180, 0, 255),   // 3. Neon Purple (Cool)
-                  Triple(200, 200, 200)  // 4. Mono Silver (Neutral)
-              )
-
-              // 描画用オブジェクト
-              private val WIDTH = 512
-              private val HEIGHT = 512
-              private val bitmap = Bitmap.createBitmap(WIDTH, HEIGHT, Bitmap.Config.ARGB_8888)
-              private val canvas = Canvas(bitmap)
-              private val paint = Paint().apply { isAntiAlias = true }
-              private val textPaint = Paint().apply { 
-                  isAntiAlias = true
-                  typeface = Typeface.DEFAULT_BOLD
-                  textAlign = Paint.Align.CENTER
+          class AmbientSession : Session() {
+              override fun onCreateScreen(intent: Intent): Screen {
+                  return AmbientScreen()
               }
-              private val clockFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
+          }
+          EOF
 
-              override fun onCreate() {
-                  super.onCreate()
-                  
-                  mediaSession = MediaSessionCompat(this, "CockpitSession").apply {
-                      setCallback(object : MediaSessionCompat.Callback() {
-                          // 再生ボタン等が押された時の処理
-                          override fun onPlay() { 
-                              // 音楽再生はしないが、状態はPlayingにする
-                              isActive = true
-                              updatePlaybackState(PlaybackStateCompat.STATE_PLAYING)
-                          }
-                          override fun onPause() {
-                              isActive = false
-                              updatePlaybackState(PlaybackStateCompat.STATE_PAUSED)
-                          }
-                          override fun onSkipToNext() {
-                              // 「次へ」ボタンを「テーマ変更」として使う
-                              themeIndex = (themeIndex + 1) % themes.size
-                          }
-                      })
-                      isActive = true
-                      updatePlaybackState(PlaybackStateCompat.STATE_PLAYING)
-                      updateVisualizer()
-                  }
-                  sessionToken = mediaSession.sessionToken
-                  
-                  setupLocation()
-                  startRendering()
-              }
+          # ===== AmbientScreen.kt =====
+          cat > app/src/main/java/jp/kazukun/peugeot/final/ambient/AmbientScreen.kt <<'EOF'
+          package jp.kazukun.peugeot.final.ambient
 
-              private fun updatePlaybackState(state: Int) {
-                  mediaSession.setPlaybackState(PlaybackStateCompat.Builder()
-                      .setActions(PlaybackStateCompat.ACTION_PLAY or 
-                                  PlaybackStateCompat.ACTION_PAUSE or 
-                                  PlaybackStateCompat.ACTION_SKIP_TO_NEXT) // テーマ変更用
-                      .setState(state, 0L, 1.0f)
-                      .build())
-              }
+          import androidx.car.app.Screen
+          import androidx.car.app.model.*
+          import androidx.lifecycle.SavedStateHandle
 
-              private fun setupLocation() {
-                  if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
-                      locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
-                      try {
-                          locationManager?.requestLocationUpdates(LocationManager.GPS_PROVIDER, 500, 0.5f, this)
-                      } catch (e: Exception) { e.printStackTrace() }
-                  }
-              }
+          class AmbientScreen : Screen {
 
-              // 描画ループ
-              private fun startRendering() {
-                  isRunning = true
-                  renderScope.launch {
-                      while (isActive && isRunning) {
-                          time += 0.05 + (currentSpeedKmh / 500.0) // 速度で動きが速くなる
-                          
-                          withContext(Dispatchers.Main) {
-                              updateVisualizer()
-                          }
-                          delay(33) // ~30 FPS
-                      }
-                  }
-              }
+              private val savedState = SavedStateHandle()
+              private var accentColor: CarColor =
+                  CarColor.createCustom(0xFF2196F3.toInt(), 0xFF0D47A1.toInt()) // Blue
 
-              private fun updateVisualizer() {
-                  // 1. 背景：完全な黒 (ガイドライン準拠)
-                  canvas.drawColor(Color.BLACK)
-                  
-                  // 2. アンビエント・ウェーブ (控えめに)
-                  val (r, g, b) = themes[themeIndex]
-                  paint.style = Paint.Style.STROKE
-                  paint.strokeWidth = 3f
-                  
-                  val centerY = HEIGHT / 2f
-                  val centerX = WIDTH / 2f
-                  
-                  // 波の描画
-                  for (i in 0 until 10) {
-                      val alpha = 100 - (i * 10)
-                      paint.color = Color.rgb(r, g, b)
-                      paint.alpha = alpha
-                      
-                      val radius = 100f + (i * 20f) + (sin(time + i) * 20f).toFloat()
-                      val speedOffset = (currentSpeedKmh / 2).toFloat()
-                      
-                      // 速度に応じて円が広がる
-                      canvas.drawCircle(centerX, centerY, radius + speedOffset, paint)
-                  }
+              override fun onGetTemplate(): Template {
 
-                  // 3. テキスト情報 (高コントラスト)
-                  
-                  // 速度表示 (32dp相当の大きさ)
-                  textPaint.color = Color.WHITE
-                  textPaint.textSize = 90f 
-                  val speedText = "%.0f".format(currentSpeedKmh)
-                  canvas.drawText(speedText, centerX, centerY + 30f, textPaint)
-                  
-                  // 単位 (小さく)
-                  textPaint.textSize = 30f
-                  textPaint.color = Color.LTGRAY
-                  canvas.drawText("km/h", centerX, centerY + 80f, textPaint)
-                  
-                  // 時計 (上部に配置)
-                  textPaint.textSize = 40f
-                  textPaint.color = Color.WHITE
-                  val clockText = clockFormat.format(Date())
-                  canvas.drawText(clockText, centerX, 60f, textPaint)
-
-                  // 4. メタデータ更新
-                  val metadata = MediaMetadataCompat.Builder()
-                      .putString(MediaMetadataCompat.METADATA_KEY_TITLE, "Ambient Cockpit") 
-                      .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, "Speed: \${speedText} km/h")
-                      .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, "Theme: Mode \${themeIndex + 1}")
-                      .putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, bitmap)
+                  val header = Pane.Builder()
+                      .addRow(
+                          Row.Builder()
+                              .setTitle("Ambient Flow")
+                              .addText("Parking Mode Active")
+                              .build()
+                      )
                       .build()
-                  mediaSession.setMetadata(metadata)
+
+                  val colorButton = Action.Builder()
+                      .setTitle("COLOR")
+                      .setBackgroundColor(accentColor)
+                      .setOnClickListener { cycleColor() }
+                      .build()
+
+                  val autoButton = Action.Builder()
+                      .setTitle("AUTO MODE")
+                      .setOnClickListener { invalidate() }
+                      .build()
+
+                  val actions = ActionStrip.Builder()
+                      .addAction(colorButton)
+                      .addAction(autoButton)
+                      .build()
+
+                  return PaneTemplate.Builder(header)
+                      .setTitle("Ambient Flow")
+                      .setActionStrip(actions)
+                      .build()
               }
 
-              override fun onLocationChanged(location: Location) {
-                  currentSpeedKmh = location.speed * 3.6f
+              private fun cycleColor() {
+                  accentColor = when (accentColor) {
+                      CarColor.createCustom(0xFF2196F3.toInt(), 0xFF0D47A1.toInt()) ->
+                          CarColor.createCustom(0xFF009688.toInt(), 0xFF004D40.toInt())
+                      CarColor.createCustom(0xFF009688.toInt(), 0xFF004D40.toInt()) ->
+                          CarColor.createCustom(0xFFFFC107.toInt(), 0xFFFF6F00.toInt())
+                      else ->
+                          CarColor.createCustom(0xFF2196F3.toInt(), 0xFF0D47A1.toInt())
+                  }
+                  invalidate()
               }
+          }
+          EOF
 
-              override fun onDestroy() {
-                  isRunning = false
-                  renderScope.cancel()
-                  locationManager?.removeUpdates(this)
-                  mediaSession.isActive = false
-                  mediaSession.release()
-                  super.onDestroy()
+          # ===== AmbientDebugActivity.kt =====
+          cat > app/src/main/java/jp/kazukun/peugeot/final/ambient/AmbientDebugActivity.kt <<'EOF'
+          package jp.kazukun.peugeot.final.ambient
+
+          import android.os.Bundle
+          import androidx.appcompat.app.AppCompatActivity
+
+          class AmbientDebugActivity : AppCompatActivity() {
+              override fun onCreate(savedInstanceState: Bundle?) {
+                  super.onCreate(savedInstanceState)
+                  setContentView(android.R.layout.simple_list_item_1)
               }
-              
-              override fun onStatusChanged(p: String?, s: Int, e: Bundle?) {}
-              override fun onProviderEnabled(p: String) {}
-              override fun onProviderDisabled(p: String) {}
-              override fun onGetRoot(pkg: String, uid: Int, root: Bundle?): BrowserRoot { return BrowserRoot("ROOT", null) }
-              override fun onLoadChildren(id: String, res: Result<MutableList<MediaBrowserCompat.MediaItem>>) { res.sendResult(mutableListOf()) }
           }
           EOF
 
@@ -428,5 +281,5 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: AmbientCockpit-APK
+          name: Ambient-Flow-APK
           path: app/build/outputs/apk/debug/app-debug.apk
