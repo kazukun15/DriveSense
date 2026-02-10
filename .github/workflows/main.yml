@@ -28,14 +28,14 @@ jobs:
           PKG="jp.kazukun.peugeot.realfinal"
           APP_LABEL="i-Cockpit"
 
-          # 1. settings.gradle
+          # 1. settings.
           # 'EOF' (シングルクォート) を使うことで、$記号の破壊を100%防ぎます
-          cat > settings.gradle.kts <<'EOF'
+          cat > settings..kts <<'EOF'
           pluginManagement {
               repositories {
                   google()
                   mavenCentral()
-                  gradlePluginPortal()
+                  PluginPortal()
               }
           }
           dependencyResolutionManagement {
@@ -49,18 +49,18 @@ jobs:
           include(":app")
           EOF
 
-          # 2. build.gradle (Project)
+          # 2. build. (Project)
           # 最も安定している AGP 8.2.0 を使用
-          cat > build.gradle.kts <<'EOF'
+          cat > build..kts <<'EOF'
           plugins {
               id("com.android.application") version "8.2.0" apply false
               id("org.jetbrains.kotlin.android") version "1.9.20" apply false
           }
           EOF
 
-          # 3. gradle.properties
-          cat > gradle.properties <<'EOF'
-          org.gradle.jvmargs=-Xmx4g -XX:+UseParallelGC
+          # 3. .properties
+          cat > .properties <<'EOF'
+          org..jvmargs=-Xmx4g -XX:+UseParallelGC
           android.useAndroidX=true
           android.enableJetifier=true
           EOF
@@ -68,7 +68,7 @@ jobs:
           # 4. App Module Setup
           mkdir -p app/src/main/{java/jp/kazukun/peugeot/realfinal,res/xml,res/values,res/drawable,res/mipmap-anydpi-v26}
 
-          cat > app/build.gradle.kts <<EOF
+          cat > app/build..kts <<EOF
           plugins {
               id("com.android.application")
               id("org.jetbrains.kotlin.android")
@@ -531,7 +531,7 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          gradlew assembleDebug --no-daemon
+          gradle assembleDebug --no-daemon
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
