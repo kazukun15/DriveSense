@@ -1,4 +1,4 @@
-name: Build Ambient Flow (IoT-Final)
+name: Build Peugeot i-Cockpit App
 
 on:
   workflow_dispatch:
@@ -23,6 +23,7 @@ jobs:
       - name: Install Gradle 8.6
         shell: bash
         run: |
+          set -euxo pipefail
           wget -q https://services.gradle.org/distributions/gradle-8.6-bin.zip
           unzip -q gradle-8.6-bin.zip
           echo "$PWD/gradle-8.6/bin" >> $GITHUB_PATH
@@ -30,17 +31,33 @@ jobs:
       - name: Generate Project Files
         shell: bash
         run: |
-          set -e
-          
-          # --- 1. Settings ---
+          set -euxo pipefail
+
+          # パッケージ名を変更して、Android Autoに「新しいアプリ」と認識させる
+          PKG="jp.kazukun.peugeot.cockpit"
+          APP_LABEL="i-Cockpit"
+
+          # 1. Settings
           cat > settings.gradle.kts <<EOF
-          pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }
-          dependencyResolutionManagement { repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS); repositories { google(); mavenCentral() } }
-          rootProject.name = "AmbientFlow"
+          pluginManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+          rootProject.name = "PeugeotCockpit"
           include(":app")
           EOF
 
-          # --- 2. Build Gradle (Project) ---
+          # 2. Build Gradle (Project)
           cat > build.gradle.kts <<EOF
           plugins {
               id("com.android.application") version "8.3.0" apply false
@@ -48,116 +65,134 @@ jobs:
           }
           EOF
 
-          # --- 3. Gradle Properties ---
+          # 3. Gradle Properties
           cat > gradle.properties <<EOF
           org.gradle.jvmargs=-Xmx4g -XX:+UseParallelGC
           android.useAndroidX=true
           android.enableJetifier=true
+          kotlin.code.style=official
           android.nonTransitiveRClass=true
-          android.suppressUnsupportedCompileSdk=35
           EOF
 
-          # --- 4. App Structure ---
-          mkdir -p app/src/main/java/jp/kazukun/ambient
-          mkdir -p app/src/main/res/xml
-          mkdir -p app/src/main/res/values
-          mkdir -p app/src/main/res/drawable
-          mkdir -p app/src/main/res/mipmap-anydpi-v26
+          # 4. App Module Setup
+          mkdir -p app/src/main/{java/jp/kazukun/peugeot/cockpit,res/xml,res/values,res/drawable,res/mipmap-anydpi-v26}
 
-          # --- 5. App Gradle ---
           cat > app/build.gradle.kts <<EOF
-          plugins { id("com.android.application"); id("org.jetbrains.kotlin.android") }
-          android {
-              namespace = "jp.kazukun.ambient"
-              compileSdk = 35
-              defaultConfig {
-                  applicationId = "jp.kazukun.ambient"
-                  minSdk = 26
-                  targetSdk = 35
-                  versionCode = 9800
-                  versionName = "980.0.IoTFinal"
-              }
-              buildTypes { release { isMinifyEnabled = false } }
-              compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
-              kotlinOptions { jvmTarget = "17" }
-              lint { abortOnError = false; checkReleaseBuilds = false }
+          plugins {
+              id("com.android.application")
+              id("org.jetbrains.kotlin.android")
           }
+
+          android {
+              namespace = "$PKG"
+              compileSdk = 34
+
+              defaultConfig {
+                  applicationId = "$PKG"
+                  minSdk = 26
+                  targetSdk = 34
+                  versionCode = 4
+                  versionName = "4.0.Lion"
+              }
+              buildTypes {
+                  release {
+                      isMinifyEnabled = true
+                      proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+                  }
+              }
+              compileOptions {
+                  sourceCompatibility = JavaVersion.VERSION_17
+                  targetCompatibility = JavaVersion.VERSION_17
+              }
+              kotlinOptions { jvmTarget = "17" }
+          }
+
           dependencies {
               implementation("androidx.core:core-ktx:1.12.0")
               implementation("androidx.appcompat:appcompat:1.6.1")
-              implementation("androidx.car.app:app:1.4.0")
+              implementation("androidx.media:media:1.7.0")
               implementation("com.google.android.gms:play-services-location:21.0.1")
-              // Lifecycle libraries required for StateManager and Observers
-              implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.6.1")
-              implementation("androidx.lifecycle:lifecycle-livedata-ktx:2.6.1")
-              implementation("androidx.lifecycle:lifecycle-common-java8:2.6.1")
+              implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
           }
           EOF
 
-          # --- 6. Resources ---
+          # --- Resources ---
           cat > app/src/main/res/values/strings.xml <<EOF
-          <resources><string name="app_name">Ambient Flow</string></resources>
+          <resources>
+              <string name="app_name">$APP_LABEL</string>
+          </resources>
           EOF
-          
-          # IoT Category configuration
+
           cat > app/src/main/res/xml/automotive_app_desc.xml <<EOF
-          <automotiveApp>
-              <uses name="iot"/>
+          <?xml version="1.0" encoding="utf-8"?>
+          <automotiveApp xmlns:android="http://schemas.android.com/apk/res/android">
+              <uses name="media" />
           </automotiveApp>
           EOF
 
-          # --- Icons ---
-          cat > app/src/main/res/drawable/ic_palette_luxury.xml <<EOF
-          <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24"><path android:fillColor="#E0E0E0" android:pathData="M12,3c-4.97,0 -9,4.03 -9,9s4.03,9 9,9c0.83,0 1.5,-0.67 1.5,-1.5 0,-0.39 -0.15,-0.74 -0.39,-1.01 -0.23,-0.26 -0.38,-0.61 -0.38,-0.99 0,-0.83 0.67,-1.5 1.5,-1.5H16c2.76,0 5,-2.24 5,-5 0,-4.42 -4.03,-8 -9,-8zM6.5,12c-0.83,0 -1.5,-0.67 -1.5,-1.5S5.67,9 6.5,9 8,9.67 8,10.5 7.33,12 6.5,12z"/></vector>
+          # ★アイコン: Peugeotスタイルのモダンな盾（Shield）デザイン
+          cat > app/src/main/res/drawable/ic_launcher_background.xml <<EOF
+          <vector xmlns:android="http://schemas.android.com/apk/res/android"
+              android:width="108dp" android:height="108dp"
+              android:viewportWidth="108" android:viewportHeight="108">
+              <path android:fillColor="#000000" android:pathData="M0,0h108v108h-108z"/>
+          </vector>
           EOF
           
-          cat > app/src/main/res/drawable/ic_auto_mode.xml <<EOF
-          <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24"><path android:fillColor="#E0E0E0" android:pathData="M12,2C6.48,2 2,6.48 2,12s4.48,10 10,10 10,-4.48 10,-10S17.52,2 12,2zm0,18c-4.41,0 -8,-3.59 -8,-8s3.59,-8 8,-8 8,3.59 8,8 -3.59,8 -8,8zm-1,-13h2v6h-2zm0,8h2v2h-2z"/></vector>
-          EOF
-
-          cat > app/src/main/res/drawable/ic_skip_previous.xml <<EOF
-          <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24"><path android:fillColor="#FFFFFF" android:pathData="M6,6h2v12H6zm3.5,6l8.5,6V6z"/></vector>
-          EOF
-          cat > app/src/main/res/drawable/ic_play_pause.xml <<EOF
-          <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24"><path android:fillColor="#FFFFFF" android:pathData="M8,5v14l11,-7z"/></vector>
-          EOF
-          cat > app/src/main/res/drawable/ic_skip_next.xml <<EOF
-          <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24"><path android:fillColor="#FFFFFF" android:pathData="M6,18l8.5,-6L6,6v12zM16,6v12h2V6h-2z"/></vector>
-          EOF
-
-          cat > app/src/main/res/drawable/ic_launcher_background.xml <<EOF
-          <vector android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108" xmlns:android="http://schemas.android.com/apk/res/android"><path android:fillColor="#000022" android:pathData="M0,0h108v108h-108z"/></vector>
-          EOF
+          # シャープなライオンの爪痕/盾をイメージしたアイコン
           cat > app/src/main/res/drawable/ic_launcher_foreground.xml <<EOF
-          <vector android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108" xmlns:android="http://schemas.android.com/apk/res/android"><path android:fillColor="#FFFFFF" android:pathData="M54,26 A28,28 0 1,0 54,82 A28,28 0 1,0 54,26 M54,40 A14,14 0 1,1 54,68 A14,14 0 1,1 54,40"/></vector>
+          <vector xmlns:android="http://schemas.android.com/apk/res/android"
+              android:width="108dp" android:height="108dp"
+              android:viewportWidth="108" android:viewportHeight="108">
+              <path android:fillColor="#E0E0E0" android:pathData="M54,18 L24,30 L30,75 L54,90 L78,75 L84,30 L54,18 Z M54,28 L74,38 L70,70 L54,80 L38,70 L34,38 L54,28 Z"/>
+              <path android:fillColor="#000000" android:pathData="M54,35 L54,75" android:strokeWidth="2" android:strokeColor="#000000"/>
+          </vector>
           EOF
+          
           cat > app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml <<EOF
-          <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android"><background android:drawable="@drawable/ic_launcher_background"/><foreground android:drawable="@drawable/ic_launcher_foreground"/></adaptive-icon>
+          <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+              <background android:drawable="@drawable/ic_launcher_background"/>
+              <foreground android:drawable="@drawable/ic_launcher_foreground"/>
+          </adaptive-icon>
           EOF
           cp app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml
 
-          # --- 7. Manifest ---
+          # Manifest
           cat > app/src/main/AndroidManifest.xml <<EOF
           <?xml version="1.0" encoding="utf-8"?>
-          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="$PKG">
               <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
-              <uses-permission android:name="android.permission.INTERNET" />
+              <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
               <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-              <uses-permission android:name="androidx.car.app.ACCESS_SURFACE" />
+              <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+              <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+              <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
-              <application android:label="Ambient Flow" android:icon="@mipmap/ic_launcher" android:theme="@style/Theme.AppCompat.NoActionBar">
-                  <meta-data android:name="com.google.android.gms.car.application" android:resource="@xml/automotive_app_desc" />
-                  <meta-data android:name="androidx.car.app.minCarApiLevel" android:value="1" />
-                  
-                  <service android:name=".AmbientCarService" android:exported="true">
+              <application
+                  android:label="$APP_LABEL"
+                  android:allowBackup="false"
+                  android:supportsRtl="true"
+                  android:icon="@mipmap/ic_launcher"
+                  android:roundIcon="@mipmap/ic_launcher_round"
+                  android:theme="@style/Theme.AppCompat.NoActionBar">
+
+                  <meta-data
+                      android:name="com.google.android.gms.car.application"
+                      android:resource="@xml/automotive_app_desc" />
+
+                  <service
+                      android:name=".LionService"
+                      android:exported="true"
+                      android:foregroundServiceType="location|mediaPlayback">
                       <intent-filter>
-                          <action android:name="androidx.car.app.CarAppService" />
-                          <category android:name="androidx.car.app.category.IOT"/>
-                          <category android:name="android.intent.category.DEFAULT" />
+                          <action android:name="android.media.browse.MediaBrowserService" />
                       </intent-filter>
                   </service>
 
-                  <activity android:name=".MainActivity" android:exported="true" android:screenOrientation="portrait">
+                  <activity
+                      android:name=".MainActivity"
+                      android:exported="true"
+                      android:launchMode="singleTop">
                       <intent-filter>
                           <action android:name="android.intent.action.MAIN" />
                           <category android:name="android.intent.category.LAUNCHER" />
@@ -167,330 +202,253 @@ jobs:
           </manifest>
           EOF
 
-          # --- 8. State Manager ---
-          cat > app/src/main/java/jp/kazukun/ambient/StateManager.kt <<EOF
-          package jp.kazukun.ambient
-          import androidx.lifecycle.MutableLiveData
-
-          object StateManager {
-              val currentMode = MutableLiveData<Int>(0)
-              val displayColorIndex = MutableLiveData<Int>(0)
-          }
-          EOF
-
-          # --- 9. MainActivity (Phone UI) ---
-          cat > app/src/main/java/jp/kazukun/ambient/MainActivity.kt <<EOF
-          package jp.kazukun.ambient
-
+          # --- Kotlin Code ---
+          # 1. MainActivity (権限リクエスト)
+          cat > app/src/main/java/jp/kazukun/peugeot/cockpit/MainActivity.kt <<EOF
+          package $PKG
           import android.Manifest
           import android.content.pm.PackageManager
-          import android.graphics.Color
-          import android.graphics.drawable.GradientDrawable
+          import android.os.Build
           import android.os.Bundle
-          import android.view.Gravity
-          import android.widget.*
           import androidx.appcompat.app.AppCompatActivity
           import androidx.core.app.ActivityCompat
           import androidx.core.content.ContextCompat
 
           class MainActivity : AppCompatActivity() {
-              private lateinit var rootLayout: FrameLayout
-              private lateinit var gradientView: ImageView
-              
-              private val modeNames = listOf("STAY", "FLOW", "DRIVE", "LOUNGE", "LUXURY", "ICE", "SPORT", "ECO")
-
               override fun onCreate(savedInstanceState: Bundle?) {
                   super.onCreate(savedInstanceState)
-                  setupUI()
-                  
-                  if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-                      ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.ACCESS_FINE_LOCATION), 99)
+                  val perms = mutableListOf(Manifest.permission.ACCESS_FINE_LOCATION)
+                  if (Build.VERSION.SDK_INT >= 33) {
+                      perms.add(Manifest.permission.POST_NOTIFICATIONS)
                   }
-
-                  // 状態監視
-                  StateManager.displayColorIndex.observe(this) { index ->
-                      updateBackground(index)
-                  }
-              }
-              
-              private fun setupUI() {
-                  rootLayout = FrameLayout(this).apply { setBackgroundColor(Color.BLACK) }
-                  gradientView = ImageView(this).apply { scaleType = ImageView.ScaleType.FIT_XY }
-                  rootLayout.addView(gradientView, FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
-                  
-                  val panel = LinearLayout(this).apply {
-                      orientation = LinearLayout.HORIZONTAL
-                      gravity = Gravity.CENTER
-                      background = GradientDrawable().apply {
-                          setColor(Color.parseColor("#80000000")) 
-                          cornerRadius = 50f
-                      }
-                      setPadding(40, 40, 40, 40)
-                  }
-                  
-                  val paramsPanel = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT).apply {
-                      gravity = Gravity.BOTTOM
-                      bottomMargin = 100
-                      leftMargin = 50
-                      rightMargin = 50
-                  }
-                  
-                  fun createButton(text: String, onClick: () -> Unit): Button {
-                      return Button(this).apply {
-                          this.text = text
-                          textSize = 14f
-                          setTextColor(Color.WHITE)
-                          background = GradientDrawable().apply {
-                              setColor(Color.parseColor("#44FFFFFF")) 
-                              cornerRadius = 30f
-                              setStroke(2, Color.WHITE)
-                          }
-                          setOnClickListener { onClick() }
-                      }
-                  }
-
-                  val btnColor = createButton("COLOR CHANGE") {
-                      val current = StateManager.currentMode.value ?: 0
-                      val newMode = if(current < 0) (StateManager.displayColorIndex.value ?: 0) + 1 else current + 1
-                      StateManager.currentMode.postValue(newMode % modeNames.size)
-                      StateManager.displayColorIndex.postValue(newMode % modeNames.size)
-                  }
-                  
-                  val btnAuto = createButton("AUTO MODE") {
-                      val current = StateManager.currentMode.value ?: 0
-                      if (current == -1) StateManager.currentMode.postValue(-2) 
-                      else StateManager.currentMode.postValue(-1) 
-                  }
-                  
-                  val btnParams = LinearLayout.LayoutParams(0, 150, 1f).apply { leftMargin = 20; rightMargin = 20 }
-                  panel.addView(btnColor, btnParams)
-                  panel.addView(btnAuto, btnParams)
-
-                  rootLayout.addView(panel, paramsPanel)
-                  setContentView(rootLayout)
-              }
-
-              private fun updateBackground(index: Int) {
-                  val colors = getColorsForIndex(index)
-                  val drawable = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, colors)
-                  gradientView.setImageDrawable(drawable)
-              }
-              
-              private fun getColorsForIndex(index: Int): IntArray {
-                  return when(index) {
-                      0 -> intArrayOf(Color.parseColor("#050510"), Color.parseColor("#1A237E"))
-                      1 -> intArrayOf(Color.parseColor("#00251a"), Color.parseColor("#00695c"))
-                      2 -> intArrayOf(Color.parseColor("#210000"), Color.parseColor("#b71c1c"))
-                      3 -> intArrayOf(Color.parseColor("#1a0033"), Color.parseColor("#6200ea"))
-                      4 -> intArrayOf(Color.parseColor("#3e2723"), Color.parseColor("#ffd54f"))
-                      5 -> intArrayOf(Color.parseColor("#263238"), Color.parseColor("#eceff1"))
-                      6 -> intArrayOf(Color.parseColor("#3e1b00"), Color.parseColor("#ff6f00"))
-                      7 -> intArrayOf(Color.parseColor("#003300"), Color.parseColor("#64dd17"))
-                      else -> intArrayOf(Color.BLACK, Color.DKGRAY)
+                  if (perms.any { ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED }) {
+                      ActivityCompat.requestPermissions(this, perms.toTypedArray(), 99)
                   }
               }
           }
           EOF
 
-          # --- 10. AmbientCarService (Full Fix) ---
-          cat > app/src/main/java/jp/kazukun/ambient/AmbientCarService.kt <<EOF
-          package jp.kazukun.ambient
+          # 2. LionService (Peugeot UI Logic)
+          cat > app/src/main/java/jp/kazukun/peugeot/cockpit/LionService.kt <<EOF
+          package $PKG
 
           import android.Manifest
           import android.content.Context
           import android.content.pm.PackageManager
           import android.graphics.*
-          import android.location.*
-          import android.media.AudioManager
-          import android.os.Bundle // ★修正: これが前回抜けていた
-          import android.os.Handler
-          import android.os.Looper
-          import android.view.KeyEvent
-          import androidx.car.app.CarAppService
-          import androidx.car.app.CarContext
-          import androidx.car.app.Screen
-          import androidx.car.app.Session
-          import androidx.car.app.model.*
-          import androidx.car.app.validation.HostValidator
+          import android.location.Location
+          import android.location.LocationListener
+          import android.location.LocationManager
+          import android.os.Bundle
+          import android.support.v4.media.MediaBrowserCompat
+          import android.support.v4.media.MediaMetadataCompat
+          import android.support.v4.media.session.MediaSessionCompat
+          import android.support.v4.media.session.PlaybackStateCompat
           import androidx.core.content.ContextCompat
-          import androidx.core.graphics.drawable.IconCompat
-          import androidx.lifecycle.DefaultLifecycleObserver
-          import androidx.lifecycle.LifecycleOwner
+          import androidx.media.MediaBrowserServiceCompat
+          import kotlinx.coroutines.*
+          import java.util.*
+          import kotlin.math.*
 
-          class AmbientCarService : CarAppService() {
-              override fun createHostValidator() = HostValidator.ALLOW_ALL_HOSTS_VALIDATOR
-              override fun onCreateSession() = AmbientSession()
-          }
-
-          class AmbientSession : Session() {
-              override fun onCreateScreen(intent: android.content.Intent): Screen {
-                  return AmbientScreen(carContext)
-              }
-          }
-
-          class AmbientScreen(carContext: CarContext) : Screen(carContext), DefaultLifecycleObserver, LocationListener {
-              private val BITMAP_WIDTH = 800
-              private val BITMAP_HEIGHT = 480
-              
-              private val textPaint = Paint()
-              private val peugeotPaint = Paint()
-              private val subPaint = Paint()
-              private val bgPaint = Paint()
-              
+          class LionService : MediaBrowserServiceCompat(), LocationListener {
+              private lateinit var mediaSession: MediaSessionCompat
               private var locationManager: LocationManager? = null
-              private var audioManager: AudioManager? = null
-              private val handler = Handler(Looper.getMainLooper())
+              private val renderScope = CoroutineScope(Dispatchers.Default + Job())
+              private var isRunning = false
               
-              private val modeNames = listOf("STAY", "FLOW", "DRIVE", "LOUNGE", "LUXURY", "ICE", "SPORT", "ECO")
+              // 状態管理
+              private var currentSpeed = 0f
+              private var modeIndex = 0
+              // Peugeotカラー定義
+              private val COLOR_ONYX = Color.BLACK
+              private val COLOR_COPPER = Color.rgb(205, 167, 120) // カッパー
+              private val COLOR_KRYPTONITE = Color.rgb(208, 255, 20) // クリプトナイトグリーン
+              private val COLOR_ICE = Color.WHITE
+
+              // 描画設定 (データ量を抑えるため解像度は適度に)
+              private val WIDTH = 400 
+              private val HEIGHT = 400
+              private val bitmap = Bitmap.createBitmap(WIDTH, HEIGHT, Bitmap.Config.ARGB_8888)
+              private val canvas = Canvas(bitmap)
+              private val paint = Paint().apply { isAntiAlias = true }
               
-              // 5分タイマー
-              private val timeAutoRunnable = object : Runnable {
-                  override fun run() {
-                      val current = StateManager.currentMode.value ?: 0
-                      if (current == -2) {
-                          val idx = (StateManager.displayColorIndex.value ?: 0) + 1
-                          StateManager.displayColorIndex.postValue(idx % modeNames.size)
-                          invalidate()
-                          handler.postDelayed(this, 300000)
-                      }
-                  }
+              // フォント設定
+              private val speedPaint = Paint().apply {
+                  isAntiAlias = true
+                  color = COLOR_ICE
+                  textSize = 80f
+                  textAlign = Paint.Align.CENTER
+                  typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
+                  setShadowLayer(10f, 0f, 0f, COLOR_KRYPTONITE) // 発光エフェクト
               }
-              
-              init {
-                  lifecycle.addObserver(this)
-                  initPaints()
-                  audioManager = carContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-                  
-                  // スマホ操作を監視
-                  StateManager.currentMode.observe(this) { mode ->
-                       if (mode == -2) handler.post(timeAutoRunnable)
-                       else handler.removeCallbacks(timeAutoRunnable)
-                       invalidate()
-                  }
-                  StateManager.displayColorIndex.observe(this) { 
-                      invalidate()
-                  }
-              }
-              
-              private fun initPaints() {
-                  textPaint.apply { isAntiAlias = true; textAlign = Paint.Align.CENTER; color = Color.WHITE; textSize = 40f; typeface = Typeface.create(Typeface.SERIF, Typeface.BOLD); setShadowLayer(10f, 0f, 0f, Color.BLACK) }
-                  peugeotPaint.apply { isAntiAlias = true; textAlign = Paint.Align.CENTER; color = Color.parseColor("#E5E4E2"); textSize = 50f; typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD_ITALIC); setShadowLayer(10f, 0f, 0f, Color.parseColor("#60000000")) }
-                  subPaint.apply { isAntiAlias = true; textAlign = Paint.Align.CENTER; color = Color.parseColor("#B0BEC5"); textSize = 30f }
-                  bgPaint.isAntiAlias = true
+              private val labelPaint = Paint().apply {
+                  isAntiAlias = true
+                  color = COLOR_COPPER
+                  textSize = 24f
+                  textAlign = Paint.Align.CENTER
+                  letterSpacing = 0.2f // モダンな文字間隔
               }
 
-              override fun onCreate(owner: LifecycleOwner) {
+              override fun onCreate() {
+                  super.onCreate()
+                  
+                  mediaSession = MediaSessionCompat(this, "LionCockpitSession").apply {
+                      setCallback(object : MediaSessionCompat.Callback() {
+                          // 再生ボタンは「モード切替」として機能
+                          override fun onPlay() { updateMode(1) }
+                          override fun onPause() { updateMode(1) }
+                          override fun onSkipToNext() { updateMode(1) }
+                          override fun onSkipToPrevious() { updateMode(-1) }
+                      })
+                      isActive = true
+                      // 重要：即座にPlaying状態にしてローディングを回避
+                      setPlaybackState(PlaybackStateCompat.Builder()
+                          .setActions(PlaybackStateCompat.ACTION_PLAY or PlaybackStateCompat.ACTION_PAUSE or PlaybackStateCompat.ACTION_SKIP_TO_NEXT)
+                          .setState(PlaybackStateCompat.STATE_PLAYING, 0L, 1.0f)
+                          .build())
+                      
+                      // 初期画面生成
+                      drawCockpit()
+                      updateMetadata()
+                  }
+                  sessionToken = mediaSession.sessionToken
+                  
                   setupLocation()
+                  startLoop()
               }
-              
+
+              private fun updateMode(delta: Int) {
+                  modeIndex = (modeIndex + delta).absoluteValue % 2
+                  drawCockpit()
+                  updateMetadata()
+              }
+
               private fun setupLocation() {
-                   if (ContextCompat.checkSelfPermission(carContext, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
-                      locationManager = carContext.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+                  if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+                      locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
                       try {
-                          locationManager?.requestLocationUpdates(LocationManager.GPS_PROVIDER, 2000, 2f, this)
+                          locationManager?.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000, 0f, this)
                       } catch (e: Exception) { e.printStackTrace() }
                   }
               }
-              
+
+              // メインループ（更新頻度を抑えて安定化）
+              private fun startLoop() {
+                  isRunning = true
+                  renderScope.launch {
+                      while (isActive && isRunning) {
+                          // 500ms (0.5秒) ごとに更新 = これなら車の通信帯域でも詰まらない
+                          drawCockpit()
+                          withContext(Dispatchers.Main) {
+                              updateMetadata()
+                          }
+                          delay(500) 
+                      }
+                  }
+              }
+
+              // Peugeot i-Cockpit風 UI描画
+              private fun drawCockpit() {
+                  // 背景: オニキスブラック
+                  canvas.drawColor(COLOR_ONYX)
+                  
+                  val cx = WIDTH / 2f
+                  val cy = HEIGHT / 2f
+                  
+                  // 1. 六角形（ヘキサゴン）のフレームを描く
+                  paint.style = Paint.Style.STROKE
+                  paint.strokeWidth = 6f
+                  paint.color = if (modeIndex == 0) COLOR_COPPER else COLOR_KRYPTONITE
+                  
+                  val path = Path()
+                  val r = 180f
+                  for (i in 0..6) {
+                      val angle = Math.toRadians((i * 60 - 30).toDouble())
+                      val x = cx + r * cos(angle).toFloat()
+                      val y = cy + r * sin(angle).toFloat()
+                      if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+                  }
+                  path.close()
+                  canvas.drawPath(path, paint)
+
+                  // 2. 速度メーターバー（左右から伸びる鋭いライン）
+                  paint.style = Paint.Style.FILL
+                  paint.strokeWidth = 0f
+                  val speedRatio = (currentSpeed / 180f).coerceIn(0f, 1f)
+                  
+                  // 左の爪痕
+                  paint.color = Color.DKGRAY
+                  canvas.drawRect(cx - 150, cy + 80, cx - 50, cy + 90, paint)
+                  paint.color = COLOR_ICE
+                  canvas.drawRect(cx - 150, cy + 80, cx - 150 + (100 * speedRatio), cy + 90, paint)
+
+                  // 右の爪痕
+                  paint.color = Color.DKGRAY
+                  canvas.drawRect(cx + 50, cy + 80, cx + 150, cy + 90, paint)
+                  paint.color = COLOR_ICE
+                  canvas.drawRect(cx + 150 - (100 * speedRatio), cy + 80, cx + 150, cy + 90, paint)
+
+                  // 3. 速度数値 (中央にドンと配置)
+                  val speedText = currentSpeed.toInt().toString()
+                  canvas.drawText(speedText, cx, cy + 30, speedPaint)
+
+                  // 4. ラベル
+                  labelPaint.color = if (modeIndex == 0) COLOR_COPPER else COLOR_KRYPTONITE
+                  canvas.drawText("KM/H", cx, cy + 130, labelPaint)
+                  
+                  val modeText = if (modeIndex == 0) "COMFORT" else "SPORT"
+                  canvas.drawText(modeText, cx, cy - 100, labelPaint)
+              }
+
+              private fun updateMetadata() {
+                  // メタデータ更新。画像は毎回送るが、頻度が低いので安定するはず。
+                  val metadata = MediaMetadataCompat.Builder()
+                      .putString(MediaMetadataCompat.METADATA_KEY_TITLE, "i-Cockpit")
+                      .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, "${currentSpeed.toInt()} km/h")
+                      .putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, bitmap)
+                      .build()
+                  mediaSession.setMetadata(metadata)
+              }
+
               override fun onLocationChanged(location: Location) {
-                  val current = StateManager.currentMode.value ?: 0
-                  if (current == -1) {
-                      val speedKmh = location.speed * 3.6f
-                      val newIndex = when {
-                          speedKmh < 5  -> 0; speedKmh < 30 -> 7; speedKmh < 50 -> 1; speedKmh < 70 -> 4; speedKmh < 90 -> 6; else -> 2
-                      }
-                      if (StateManager.displayColorIndex.value != newIndex) {
-                          StateManager.displayColorIndex.postValue(newIndex)
-                      }
-                  }
+                  currentSpeed = location.speed * 3.6f
+                  // 位置情報が変わった時だけ即座に再描画するのもあり
+                  drawCockpit()
+                  updateMetadata()
               }
 
-              private fun sendMediaKey(keyCode: Int) {
-                  try {
-                      audioManager?.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, keyCode))
-                      audioManager?.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_UP, keyCode))
-                  } catch (e: Exception) { e.printStackTrace() }
+              // 必須：これが無いとローディングが終わらない最重要メソッド
+              override fun onLoadChildren(parentId: String, result: Result<MutableList<MediaBrowserCompat.MediaItem>>) {
+                  result.sendResult(mutableListOf()) // 空のリストを即座に返す
               }
 
-              override fun onGetTemplate(): Template {
-                  val bitmap = generateBitmap()
-                  val carIcon = CarIcon.Builder(IconCompat.createWithBitmap(bitmap)).build()
-
-                  val actionStrip = ActionStrip.Builder()
-                      .addAction(Action.Builder().setIcon(CarIcon.Builder(IconCompat.createWithResource(carContext, R.drawable.ic_skip_previous)).build()).setOnClickListener { sendMediaKey(KeyEvent.KEYCODE_MEDIA_PREVIOUS) }.build())
-                      .addAction(Action.Builder().setIcon(CarIcon.Builder(IconCompat.createWithResource(carContext, R.drawable.ic_play_pause)).build()).setOnClickListener { sendMediaKey(KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE) }.build())
-                      .addAction(Action.Builder().setIcon(CarIcon.Builder(IconCompat.createWithResource(carContext, R.drawable.ic_skip_next)).build()).setOnClickListener { sendMediaKey(KeyEvent.KEYCODE_MEDIA_NEXT) }.build())
-                      .build()
-
-                  val pane = Pane.Builder()
-                      .setImage(carIcon)
-                      .addAction(
-                          Action.Builder()
-                              .setTitle("Change Color")
-                              .setIcon(CarIcon.Builder(IconCompat.createWithResource(carContext, R.drawable.ic_palette_luxury)).build())
-                              .setOnClickListener { 
-                                  val current = StateManager.currentMode.value ?: 0
-                                  val newMode = if(current < 0) (StateManager.displayColorIndex.value ?: 0) + 1 else current + 1
-                                  StateManager.currentMode.postValue(newMode % modeNames.size)
-                                  StateManager.displayColorIndex.postValue(newMode % modeNames.size)
-                              }
-                              .build()
-                      )
-                      .build()
-
-                  return PaneTemplate.Builder(pane)
-                      .setTitle("Ambient Dashboard")
-                      .setActionStrip(actionStrip)
-                      .build()
-              }
-
-              private fun generateBitmap(): Bitmap {
-                  val bmp = Bitmap.createBitmap(BITMAP_WIDTH, BITMAP_HEIGHT, Bitmap.Config.ARGB_8888)
-                  val canvas = Canvas(bmp)
-                  
-                  val idx = StateManager.displayColorIndex.value ?: 0
-                  val current = StateManager.currentMode.value ?: 0
-                  val modeText = when(current) { -1 -> "AUTO-GPS"; -2 -> "AUTO-TIME"; else -> modeNames[idx] }
-
-                  val colors = when(idx) {
-                      0 -> intArrayOf(Color.parseColor("#050510"), Color.parseColor("#1A237E"))
-                      1 -> intArrayOf(Color.parseColor("#00251a"), Color.parseColor("#00695c"))
-                      2 -> intArrayOf(Color.parseColor("#210000"), Color.parseColor("#b71c1c"))
-                      3 -> intArrayOf(Color.parseColor("#1a0033"), Color.parseColor("#6200ea"))
-                      4 -> intArrayOf(Color.parseColor("#3e2723"), Color.parseColor("#ffd54f"))
-                      5 -> intArrayOf(Color.parseColor("#263238"), Color.parseColor("#eceff1"))
-                      6 -> intArrayOf(Color.parseColor("#3e1b00"), Color.parseColor("#ff6f00"))
-                      7 -> intArrayOf(Color.parseColor("#003300"), Color.parseColor("#64dd17"))
-                      else -> intArrayOf(Color.BLACK, Color.DKGRAY)
-                  }
-                  
-                  bgPaint.shader = LinearGradient(0f, 0f, 0f, BITMAP_HEIGHT.toFloat(), colors[0], colors[1], Shader.TileMode.CLAMP)
-                  canvas.drawRect(0f, 0f, BITMAP_WIDTH.toFloat(), BITMAP_HEIGHT.toFloat(), bgPaint)
-
-                  val cx = BITMAP_WIDTH / 2f
-                  val cy = BITMAP_HEIGHT / 2f
-                  canvas.drawText("Ambient Flow", cx, cy - 60f, textPaint)
-                  canvas.drawText("PEUGEOT", cx, cy + 20f, peugeotPaint)
-                  canvas.drawText("Mode: " + modeText, cx, cy + 100f, subPaint)
-                  
-                  return bmp
+              override fun onGetRoot(clientPackageName: String, clientUid: Int, rootHints: Bundle?): BrowserRoot {
+                  return BrowserRoot("ROOT", null)
               }
               
+              override fun onDestroy() {
+                  isRunning = false
+                  renderScope.cancel()
+                  locationManager?.removeUpdates(this)
+                  mediaSession.isActive = false
+                  mediaSession.release()
+                  super.onDestroy()
+              }
+              // Stub
               override fun onStatusChanged(p: String?, s: Int, e: Bundle?) {}
               override fun onProviderEnabled(p: String) {}
               override fun onProviderDisabled(p: String) {}
-              override fun onDestroy(owner: LifecycleOwner) { locationManager?.removeUpdates(this) }
           }
           EOF
 
       - name: Build APK
         shell: bash
         run: |
-          set -e
+          set -euxo pipefail
           gradle assembleDebug --no-daemon
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: AmbientFlow-IoTFinal-APK
+          name: Peugeot-Cockpit-APK
           path: app/build/outputs/apk/debug/app-debug.apk
