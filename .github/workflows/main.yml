@@ -1,51 +1,284 @@
-package jp.kazukun.peugeot.final
+name: Build Ambient Flow (Parking Mode)
+on:
+  workflow_dispatch:
 
-import android.location.Location
-import android.location.LocationListener
-import android.location.LocationManager
-import android.os.Bundle
-import androidx.car.app.Screen
-import androidx.car.app.model.*
+jobs:
+  build:
+    runs-on: ubuntu-latest
 
-class CockpitScreen : Screen, LocationListener {
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-    private var speedKmh = 0
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: "temurin"
 
-    override fun onGetTemplate(): Template {
-        val speedText = "${speedKmh} km/h"
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
 
-        return PaneTemplate.Builder(
-            Pane.Builder()
-                .addRow(
-                    Row.Builder()
-                        .setTitle("i-Cockpit")
-                        .addText("現在速度: $speedText")
-                        .build()
-                )
-                .build()
-        )
-            .setTitle("Peugeot Final")
-            .build()
-    }
+      - name: Setup Gradle 8.4 (安定版)
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: 8.4
 
-    override fun onLocationChanged(location: Location) {
-        speedKmh = (location.speed * 3.6f).toInt()
-        invalidate()
-    }
+      - name: Generate Project Files
+        shell: bash
+        run: |
+          set -euxo pipefail
 
-    override fun onAttached() {
-        super.onAttached()
-        val lm = carContext.getSystemService(LocationManager::class.java)
-        try {
-            lm.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000, 0f, this)
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-    }
+          PKG="jp.kazukun.peugeot.final"
+          APP_LABEL="Ambient Flow"
 
-    override fun onDetached() {
-        super.onDetached()
-        val lm = carContext.getSystemService(LocationManager::class.java)
-        lm.removeUpdates(this)
-    }
-}
+          # ===== settings.gradle.kts =====
+          cat > settings.gradle.kts <<'EOF'
+          pluginManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+          rootProject.name = "AmbientFlow"
+          include(":app")
+          EOF
+
+          # ===== build.gradle.kts (Root) =====
+          cat > build.gradle.kts <<'EOF'
+          plugins {
+              id("com.android.application") version "8.3.0" apply false
+              id("org.jetbrains.kotlin.android") version "1.9.23" apply false
+          }
+          EOF
+
+          # ===== gradle.properties =====
+          cat > gradle.properties <<'EOF'
+          org.gradle.jvmargs=-Xmx4g -XX:+UseParallelGC
+          android.useAndroidX=true
+          android.enableJetifier=true
+          kotlin.code.style=official
+          android.nonTransitiveRClass=true
+          EOF
+
+          # ===== Module Structure =====
+          mkdir -p app/src/main/java/jp/kazukun/peugeot/final/ambient
+          mkdir -p app/src/main/res/{xml,values,mipmap-anydpi-v26}
+
+          # ===== app/build.gradle.kts =====
+          cat > app/build.gradle.kts <<EOF
+          plugins {
+              id("com.android.application")
+              id("org.jetbrains.kotlin.android")
+          }
+
+          android {
+              namespace = "$PKG"
+              compileSdk = 34
+
+              defaultConfig {
+                  applicationId = "$PKG"
+                  minSdk = 26
+                  targetSdk = 34
+                  versionCode = 1
+                  versionName = "1.0.Ambient"
+              }
+
+              buildTypes {
+                  release { isMinifyEnabled = false }
+              }
+
+              compileOptions {
+                  sourceCompatibility = JavaVersion.VERSION_17
+                  targetCompatibility = JavaVersion.VERSION_17
+              }
+              kotlinOptions { jvmTarget = "17" }
+          }
+
+          dependencies {
+              implementation("androidx.core:core-ktx:1.12.0")
+              implementation("androidx.appcompat:appcompat:1.6.1")
+
+              // Android Auto (Car App Library)
+              implementation("androidx.car.app:app:1.3.0")
+              implementation("androidx.car.app:app-projected:1.3.0")
+
+              // 状態保存
+              implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
+          }
+          EOF
+
+          # ===== strings.xml =====
+          cat > app/src/main/res/values/strings.xml <<EOF
+          <resources>
+              <string name="app_name">$APP_LABEL</string>
+          </resources>
+          EOF
+
+          # ===== AndroidManifest.xml =====
+          cat > app/src/main/AndroidManifest.xml <<EOF
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+              package="$PKG">
+
+              <application
+                  android:label="$APP_LABEL"
+                  android:allowBackup="false"
+                  android:supportsRtl="true"
+                  android:icon="@mipmap/ic_launcher"
+                  android:roundIcon="@mipmap/ic_launcher_round"
+                  android:theme="@style/Theme.AppCompat.NoActionBar">
+
+                  <!-- Android Auto (Parking Mode) -->
+                  <service
+                      android:name=".ambient.AmbientCarService"
+                      android:exported="true">
+                      <intent-filter>
+                          <action android:name="androidx.car.app.CarAppService" />
+                      </intent-filter>
+                  </service>
+
+                  <!-- デバッグ用（スマホ単体起動） -->
+                  <activity
+                      android:name=".ambient.AmbientDebugActivity"
+                      android:exported="true"
+                      android:screenOrientation="landscape">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+                  </activity>
+
+              </application>
+          </manifest>
+          EOF
+
+          # ===== AmbientCarService.kt =====
+          cat > app/src/main/java/jp/kazukun/peugeot/final/ambient/AmbientCarService.kt <<'EOF'
+          package jp.kazukun.peugeot.final.ambient
+
+          import androidx.car.app.CarAppService
+          import androidx.car.app.Session
+          import androidx.car.app.validation.HostValidator
+
+          class AmbientCarService : CarAppService() {
+              override fun createHostValidator(): HostValidator {
+                  return HostValidator.ALLOW_ALL_HOSTS_VALIDATOR
+              }
+
+              override fun onCreateSession(): Session {
+                  return AmbientSession()
+              }
+          }
+          EOF
+
+          # ===== AmbientSession.kt =====
+          cat > app/src/main/java/jp/kazukun/peugeot/final/ambient/AmbientSession.kt <<'EOF'
+          package jp.kazukun.peugeot.final.ambient
+
+          import android.content.Intent
+          import androidx.car.app.Screen
+          import androidx.car.app.Session
+
+          class AmbientSession : Session() {
+              override fun onCreateScreen(intent: Intent): Screen {
+                  return AmbientScreen()
+              }
+          }
+          EOF
+
+          # ===== AmbientScreen.kt =====
+          cat > app/src/main/java/jp/kazukun/peugeot/final/ambient/AmbientScreen.kt <<'EOF'
+          package jp.kazukun.peugeot.final.ambient
+
+          import androidx.car.app.Screen
+          import androidx.car.app.model.*
+          import androidx.lifecycle.SavedStateHandle
+
+          class AmbientScreen : Screen {
+
+              private val savedState = SavedStateHandle()
+              private var accentColor: CarColor =
+                  CarColor.createCustom(0xFF2196F3.toInt(), 0xFF0D47A1.toInt()) // Blue
+
+              override fun onGetTemplate(): Template {
+
+                  val header = Pane.Builder()
+                      .addRow(
+                          Row.Builder()
+                              .setTitle("Ambient Flow")
+                              .addText("Parking Mode Active")
+                              .build()
+                      )
+                      .build()
+
+                  val colorButton = Action.Builder()
+                      .setTitle("COLOR")
+                      .setBackgroundColor(accentColor)
+                      .setOnClickListener { cycleColor() }
+                      .build()
+
+                  val autoButton = Action.Builder()
+                      .setTitle("AUTO MODE")
+                      .setOnClickListener { invalidate() }
+                      .build()
+
+                  val actions = ActionStrip.Builder()
+                      .addAction(colorButton)
+                      .addAction(autoButton)
+                      .build()
+
+                  return PaneTemplate.Builder(header)
+                      .setTitle("Ambient Flow")
+                      .setActionStrip(actions)
+                      .build()
+              }
+
+              private fun cycleColor() {
+                  accentColor = when (accentColor) {
+                      CarColor.createCustom(0xFF2196F3.toInt(), 0xFF0D47A1.toInt()) ->
+                          CarColor.createCustom(0xFF009688.toInt(), 0xFF004D40.toInt())
+                      CarColor.createCustom(0xFF009688.toInt(), 0xFF004D40.toInt()) ->
+                          CarColor.createCustom(0xFFFFC107.toInt(), 0xFFFF6F00.toInt())
+                      else ->
+                          CarColor.createCustom(0xFF2196F3.toInt(), 0xFF0D47A1.toInt())
+                  }
+                  invalidate()
+              }
+          }
+          EOF
+
+          # ===== AmbientDebugActivity.kt =====
+          cat > app/src/main/java/jp/kazukun/peugeot/final/ambient/AmbientDebugActivity.kt <<'EOF'
+          package jp.kazukun.peugeot.final.ambient
+
+          import android.os.Bundle
+          import androidx.appcompat.app.AppCompatActivity
+
+          class AmbientDebugActivity : AppCompatActivity() {
+              override fun onCreate(savedInstanceState: Bundle?) {
+                  super.onCreate(savedInstanceState)
+                  setContentView(android.R.layout.simple_list_item_1)
+              }
+          }
+          EOF
+
+      - name: Build APK
+        shell: bash
+        run: |
+          set -euxo pipefail
+          gradle assembleDebug --no-daemon
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Ambient-Flow-APK
+          path: app/build/outputs/apk/debug/app-debug.apk
