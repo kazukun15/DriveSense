@@ -1,599 +1,432 @@
-# ============================================================
-# SafeAR Ver 18.0 - Hyper Sense (High-Res & Color Coded)
-# 生成物: SafeAR_Hyper_V18.zip
-# ============================================================
-
-import os, zipfile
-
-# 設定
-PROJECT_NAME = "SafeAR-Hyper-V18"
-PACKAGE_DIR = "app/src/main/java/jp/kamijima/safear/v18"
-RES_DIR = "app/src/main/res"
-
-def write_file(zipf, path, content):
-    zipf.writestr(path, content.strip() + "\n")
-
-print(f"📦 Generating High-Performance Repository: {PROJECT_NAME}...")
-
-with zipfile.ZipFile("SafeAR_Hyper_V18.zip", "w") as z:
-
-    # 1. GitHub Actions (YAML)
-    workflow_content = """name: Android CI
+name: Build Ambient Cockpit (UI/UX Optimized)
 
 on:
-  push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
-      
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
-          java-version: '17'
-          distribution: 'temurin'
-          cache: gradle
+          java-version: "17"
+          distribution: "temurin"
 
-      - name: Grant execute permission for gradlew
-        run: chmod +x gradlew
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
 
-      - name: Build with Gradle
-        run: ./gradlew assembleDebug
+      - name: Install Gradle 8.6
+        shell: bash
+        run: |
+          set -euxo pipefail
+          wget -q https://services.gradle.org/distributions/gradle-8.6-bin.zip
+          unzip -q gradle-8.6-bin.zip
+          echo "$PWD/gradle-8.6/bin" >> $GITHUB_PATH
+
+      - name: Generate Project Files
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          PKG="jp.kazukun.ambient.cockpit"
+          APP_LABEL="Ambient Cockpit"
+
+          # 1. Settings
+          cat > settings.gradle.kts <<EOF
+          pluginManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+          rootProject.name = "AmbientCockpit"
+          include(":app")
+          EOF
+
+          # 2. Build Gradle (Project)
+          cat > build.gradle.kts <<EOF
+          plugins {
+              id("com.android.application") version "8.3.0" apply false
+              id("org.jetbrains.kotlin.android") version "1.9.23" apply false
+          }
+          EOF
+
+          # 3. Gradle Properties
+          cat > gradle.properties <<EOF
+          org.gradle.jvmargs=-Xmx4g -XX:+UseParallelGC
+          android.useAndroidX=true
+          android.enableJetifier=true
+          kotlin.code.style=official
+          android.nonTransitiveRClass=true
+          EOF
+
+          # 4. App Module
+          mkdir -p app/src/main/{java/jp/kazukun/ambient/cockpit,res/xml,res/values,res/drawable,res/mipmap-anydpi-v26}
+
+          cat > app/build.gradle.kts <<EOF
+          plugins {
+              id("com.android.application")
+              id("org.jetbrains.kotlin.android")
+          }
+
+          android {
+              namespace = "$PKG"
+              compileSdk = 34
+
+              defaultConfig {
+                  applicationId = "$PKG"
+                  minSdk = 26
+                  targetSdk = 34
+                  versionCode = 3
+                  versionName = "3.0.Cockpit"
+              }
+              buildTypes {
+                  release {
+                      isMinifyEnabled = true
+                      proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+                  }
+              }
+              compileOptions {
+                  sourceCompatibility = JavaVersion.VERSION_17
+                  targetCompatibility = JavaVersion.VERSION_17
+              }
+              kotlinOptions { jvmTarget = "17" }
+          }
+
+          dependencies {
+              implementation("androidx.core:core-ktx:1.12.0")
+              implementation("androidx.appcompat:appcompat:1.6.1")
+              implementation("androidx.media:media:1.7.0")
+              implementation("com.google.android.gms:play-services-location:21.0.1")
+              implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+          }
+          EOF
+
+          # --- Resources ---
+          cat > app/src/main/res/values/strings.xml <<EOF
+          <resources>
+              <string name="app_name">$APP_LABEL</string>
+          </resources>
+          EOF
+
+          cat > app/src/main/res/xml/automotive_app_desc.xml <<EOF
+          <?xml version="1.0" encoding="utf-8"?>
+          <automotiveApp xmlns:android="http://schemas.android.com/apk/res/android">
+              <uses name="media" />
+          </automotiveApp>
+          EOF
+
+          # Icons (Simple & High Contrast)
+          cat > app/src/main/res/drawable/ic_launcher_background.xml <<EOF
+          <vector xmlns:android="http://schemas.android.com/apk/res/android"
+              android:width="108dp" android:height="108dp"
+              android:viewportWidth="108" android:viewportHeight="108">
+              <path android:fillColor="#000000" android:pathData="M0,0h108v108h-108z"/>
+          </vector>
+          EOF
+          cat > app/src/main/res/drawable/ic_launcher_foreground.xml <<EOF
+          <vector xmlns:android="http://schemas.android.com/apk/res/android"
+              android:width="108dp" android:height="108dp"
+              android:viewportWidth="108" android:viewportHeight="108">
+              <path android:fillColor="#FFFFFF" android:pathData="M54,14 A40,40 0 1,0 54,94 A40,40 0 1,0 54,14 M54,24 A30,30 0 1,1 54,84 A30,30 0 1,1 54,24"/>
+          </vector>
+          EOF
+          cat > app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml <<EOF
+          <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+              <background android:drawable="@drawable/ic_launcher_background"/>
+              <foreground android:drawable="@drawable/ic_launcher_foreground"/>
+          </adaptive-icon>
+          EOF
+          cp app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml
+
+          # Manifest
+          cat > app/src/main/AndroidManifest.xml <<EOF
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="$PKG">
+              
+              <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+              <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+              <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+              <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+              <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+              <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+              <application
+                  android:label="$APP_LABEL"
+                  android:allowBackup="false"
+                  android:supportsRtl="true"
+                  android:icon="@mipmap/ic_launcher"
+                  android:roundIcon="@mipmap/ic_launcher_round"
+                  android:theme="@style/Theme.AppCompat.NoActionBar">
+
+                  <meta-data
+                      android:name="com.google.android.gms.car.application"
+                      android:resource="@xml/automotive_app_desc" />
+
+                  <service
+                      android:name=".CockpitService"
+                      android:exported="true"
+                      android:foregroundServiceType="location|mediaPlayback">
+                      <intent-filter>
+                          <action android:name="android.media.browse.MediaBrowserService" />
+                      </intent-filter>
+                  </service>
+
+                  <activity
+                      android:name=".MainActivity"
+                      android:exported="true"
+                      android:launchMode="singleTop">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+                  </activity>
+              </application>
+          </manifest>
+          EOF
+
+          # --- Kotlin Code ---
+          # 1. MainActivity
+          cat > app/src/main/java/jp/kazukun/ambient/cockpit/MainActivity.kt <<EOF
+          package $PKG
+          import android.Manifest
+          import android.content.pm.PackageManager
+          import android.os.Build
+          import android.os.Bundle
+          import androidx.appcompat.app.AppCompatActivity
+          import androidx.core.app.ActivityCompat
+          import androidx.core.content.ContextCompat
+
+          class MainActivity : AppCompatActivity() {
+              override fun onCreate(savedInstanceState: Bundle?) {
+                  super.onCreate(savedInstanceState)
+                  
+                  val perms = mutableListOf(Manifest.permission.ACCESS_FINE_LOCATION)
+                  if (Build.VERSION.SDK_INT >= 33) {
+                      perms.add(Manifest.permission.POST_NOTIFICATIONS)
+                  }
+                  
+                  if (perms.any { ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED }) {
+                      ActivityCompat.requestPermissions(this, perms.toTypedArray(), 99)
+                  }
+              }
+          }
+          EOF
+
+          # 2. CockpitService (High-End Visualizer)
+          cat > app/src/main/java/jp/kazukun/ambient/cockpit/CockpitService.kt <<EOF
+          package $PKG
+
+          import android.Manifest
+          import android.content.Context
+          import android.content.pm.PackageManager
+          import android.graphics.*
+          import android.location.Location
+          import android.location.LocationListener
+          import android.location.LocationManager
+          import android.os.Bundle
+          import android.support.v4.media.MediaBrowserCompat
+          import android.support.v4.media.MediaMetadataCompat
+          import android.support.v4.media.session.MediaSessionCompat
+          import android.support.v4.media.session.PlaybackStateCompat
+          import androidx.core.content.ContextCompat
+          import androidx.media.MediaBrowserServiceCompat
+          import kotlinx.coroutines.*
+          import java.text.SimpleDateFormat
+          import java.util.*
+          import kotlin.math.*
+
+          class CockpitService : MediaBrowserServiceCompat(), LocationListener {
+              private lateinit var mediaSession: MediaSessionCompat
+              private var locationManager: LocationManager? = null
+              private val renderScope = CoroutineScope(Dispatchers.Default + Job())
+              private var isRunning = false
+              
+              // 状態
+              private var currentSpeedKmh = 0f
+              private var time = 0.0
+              private var themeIndex = 0
+              
+              // テーマカラー (R, G, B) - ガイドライン準拠のアクセントカラー
+              private val themes = listOf(
+                  Triple(0, 150, 255),   // 1. Cyber Blue (Android Auto Blue)
+                  Triple(255, 140, 0),   // 2. Amber Orange (Warm)
+                  Triple(180, 0, 255),   // 3. Neon Purple (Cool)
+                  Triple(200, 200, 200)  // 4. Mono Silver (Neutral)
+              )
+
+              // 描画用オブジェクト
+              private val WIDTH = 512
+              private val HEIGHT = 512
+              private val bitmap = Bitmap.createBitmap(WIDTH, HEIGHT, Bitmap.Config.ARGB_8888)
+              private val canvas = Canvas(bitmap)
+              private val paint = Paint().apply { isAntiAlias = true }
+              private val textPaint = Paint().apply { 
+                  isAntiAlias = true
+                  typeface = Typeface.DEFAULT_BOLD
+                  textAlign = Paint.Align.CENTER
+              }
+              private val clockFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
+
+              override fun onCreate() {
+                  super.onCreate()
+                  
+                  mediaSession = MediaSessionCompat(this, "CockpitSession").apply {
+                      setCallback(object : MediaSessionCompat.Callback() {
+                          // 再生ボタン等が押された時の処理
+                          override fun onPlay() { 
+                              // 音楽再生はしないが、状態はPlayingにする
+                              isActive = true
+                              updatePlaybackState(PlaybackStateCompat.STATE_PLAYING)
+                          }
+                          override fun onPause() {
+                              isActive = false
+                              updatePlaybackState(PlaybackStateCompat.STATE_PAUSED)
+                          }
+                          override fun onSkipToNext() {
+                              // 「次へ」ボタンを「テーマ変更」として使う
+                              themeIndex = (themeIndex + 1) % themes.size
+                          }
+                      })
+                      isActive = true
+                      updatePlaybackState(PlaybackStateCompat.STATE_PLAYING)
+                      updateVisualizer()
+                  }
+                  sessionToken = mediaSession.sessionToken
+                  
+                  setupLocation()
+                  startRendering()
+              }
+
+              private fun updatePlaybackState(state: Int) {
+                  mediaSession.setPlaybackState(PlaybackStateCompat.Builder()
+                      .setActions(PlaybackStateCompat.ACTION_PLAY or 
+                                  PlaybackStateCompat.ACTION_PAUSE or 
+                                  PlaybackStateCompat.ACTION_SKIP_TO_NEXT) // テーマ変更用
+                      .setState(state, 0L, 1.0f)
+                      .build())
+              }
+
+              private fun setupLocation() {
+                  if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+                      locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
+                      try {
+                          locationManager?.requestLocationUpdates(LocationManager.GPS_PROVIDER, 500, 0.5f, this)
+                      } catch (e: Exception) { e.printStackTrace() }
+                  }
+              }
+
+              // 描画ループ
+              private fun startRendering() {
+                  isRunning = true
+                  renderScope.launch {
+                      while (isActive && isRunning) {
+                          time += 0.05 + (currentSpeedKmh / 500.0) // 速度で動きが速くなる
+                          
+                          withContext(Dispatchers.Main) {
+                              updateVisualizer()
+                          }
+                          delay(33) // ~30 FPS
+                      }
+                  }
+              }
+
+              private fun updateVisualizer() {
+                  // 1. 背景：完全な黒 (ガイドライン準拠)
+                  canvas.drawColor(Color.BLACK)
+                  
+                  // 2. アンビエント・ウェーブ (控えめに)
+                  val (r, g, b) = themes[themeIndex]
+                  paint.style = Paint.Style.STROKE
+                  paint.strokeWidth = 3f
+                  
+                  val centerY = HEIGHT / 2f
+                  val centerX = WIDTH / 2f
+                  
+                  // 波の描画
+                  for (i in 0 until 10) {
+                      val alpha = 100 - (i * 10)
+                      paint.color = Color.rgb(r, g, b)
+                      paint.alpha = alpha
+                      
+                      val radius = 100f + (i * 20f) + (sin(time + i) * 20f).toFloat()
+                      val speedOffset = (currentSpeedKmh / 2).toFloat()
+                      
+                      // 速度に応じて円が広がる
+                      canvas.drawCircle(centerX, centerY, radius + speedOffset, paint)
+                  }
+
+                  // 3. テキスト情報 (高コントラスト)
+                  
+                  // 速度表示 (32dp相当の大きさ)
+                  textPaint.color = Color.WHITE
+                  textPaint.textSize = 90f 
+                  val speedText = "%.0f".format(currentSpeedKmh)
+                  canvas.drawText(speedText, centerX, centerY + 30f, textPaint)
+                  
+                  // 単位 (小さく)
+                  textPaint.textSize = 30f
+                  textPaint.color = Color.LTGRAY
+                  canvas.drawText("km/h", centerX, centerY + 80f, textPaint)
+                  
+                  // 時計 (上部に配置)
+                  textPaint.textSize = 40f
+                  textPaint.color = Color.WHITE
+                  val clockText = clockFormat.format(Date())
+                  canvas.drawText(clockText, centerX, 60f, textPaint)
+
+                  // 4. メタデータ更新
+                  val metadata = MediaMetadataCompat.Builder()
+                      .putString(MediaMetadataCompat.METADATA_KEY_TITLE, "Ambient Cockpit") 
+                      .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, "Speed: \${speedText} km/h")
+                      .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, "Theme: Mode \${themeIndex + 1}")
+                      .putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, bitmap)
+                      .build()
+                  mediaSession.setMetadata(metadata)
+              }
+
+              override fun onLocationChanged(location: Location) {
+                  currentSpeedKmh = location.speed * 3.6f
+              }
+
+              override fun onDestroy() {
+                  isRunning = false
+                  renderScope.cancel()
+                  locationManager?.removeUpdates(this)
+                  mediaSession.isActive = false
+                  mediaSession.release()
+                  super.onDestroy()
+              }
+              
+              override fun onStatusChanged(p: String?, s: Int, e: Bundle?) {}
+              override fun onProviderEnabled(p: String) {}
+              override fun onProviderDisabled(p: String) {}
+              override fun onGetRoot(pkg: String, uid: Int, root: Bundle?): BrowserRoot { return BrowserRoot("ROOT", null) }
+              override fun onLoadChildren(id: String, res: Result<MutableList<MediaBrowserCompat.MediaItem>>) { res.sendResult(mutableListOf()) }
+          }
+          EOF
+
+      - name: Build APK
+        shell: bash
+        run: |
+          set -euxo pipefail
+          gradle assembleDebug --no-daemon
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: SafeAR-V18-Hyper
+          name: AmbientCockpit-APK
           path: app/build/outputs/apk/debug/app-debug.apk
-"""
-    write_file(z, ".github/workflows/android.yml", workflow_content)
-
-    # 2. README
-    write_file(z, "README.md", """
-# 🛡️ SafeAR: Hyper Sense Edition (Ver 18.0)
-
-![Android](https://img.shields.io/badge/Android-16%20Ready-3DDC84?style=for-the-badge&logo=android&logoColor=white)
-![Build Status](https://img.shields.io/badge/build-passing-brightgreen?style=for-the-badge)
-
-**SafeAR V18** pushes the limits of on-device AI detection.
-
-## 🚀 New Features in V18
-* **High-Res Analysis:** Upgraded AI input to HD (1280x720) for sharper detection.
-* **Hyper Tracking:** Inertial prediction keeps tracking even when the camera moves fast.
-* **Color Coded HUD:** * 🟦 **Human** (Cyan)
-    * 🟥 **Vehicle** (Red)
-    * 🟩 **Bike** (Green)
-* **Translucent UI:** Semi-transparent fill for better visibility.
-
-## 🛠️ How to Build
-1. Upload to GitHub.
-2. Check Actions tab.
-3. Download APK.
-""")
-
-    # 3. .gitignore
-    write_file(z, ".gitignore", """
-*.iml
-.gradle
-/local.properties
-/.idea
-.DS_Store
-/build
-/captures
-.externalNativeBuild
-.cxx
-""")
-
-    # 4. Gradle Settings
-    write_file(z, "settings.gradle", f"""
-pluginManagement {{ repositories {{ google(); mavenCentral(); gradlePluginPortal() }} }}
-dependencyResolutionManagement {{ repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS); repositories {{ google(); mavenCentral() }} }}
-rootProject.name = "{PROJECT_NAME}"
-include ':app'
-""")
-
-    # 5. Build Files
-    write_file(z, "build.gradle", "plugins { id 'com.android.application' version '8.3.2' apply false }")
-    write_file(z, "gradle.properties", "org.gradle.jvmargs=-Xmx3g\nandroid.useAndroidX=true\nandroid.enableJetifier=true")
-
-    # 6. App Module
-    write_file(z, "app/build.gradle", """
-plugins { id 'com.android.application' }
-
-android {
-    namespace 'jp.kamijima.safear.v18'
-    compileSdk 35
-    defaultConfig {
-        applicationId "jp.kamijima.safear.v18"
-        minSdk 26
-        targetSdk 35
-        versionCode 18
-        versionName "18.0"
-        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
-    }
-    buildTypes {
-        release {
-            minifyEnabled false
-            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-        }
-    }
-    compileOptions {
-        sourceCompatibility JavaVersion.VERSION_17
-        targetCompatibility JavaVersion.VERSION_17
-    }
-    buildFeatures { viewBinding true }
-}
-
-dependencies {
-    implementation 'androidx.appcompat:appcompat:1.6.1'
-    implementation 'com.google.android.material:material:1.11.0'
-    def cx = "1.3.4"
-    implementation "androidx.camera:camera-core:${cx}"
-    implementation "androidx.camera:camera-camera2:${cx}"
-    implementation "androidx.camera:camera-lifecycle:${cx}"
-    implementation "androidx.camera:camera-view:${cx}"
-    implementation 'com.google.mlkit:object-detection:17.0.2'
-}
-""")
-
-    # 7. Manifest
-    write_file(z, "app/src/main/AndroidManifest.xml", """<?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <uses-permission android:name="android.permission.CAMERA" />
-    <uses-permission android:name="android.permission.INTERNET" />
-    <application
-        android:allowBackup="true"
-        android:label="SafeAR Hyper"
-        android:theme="@style/Theme.AppCompat.NoActionBar">
-        <activity android:name=".MainActivity" android:exported="true" android:screenOrientation="portrait">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity>
-    </application>
-</manifest>
-""")
-
-    # 8. Layout
-    write_file(z, f"{RES_DIR}/layout/activity_main.xml", """<?xml version="1.0" encoding="utf-8"?>
-<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:background="#000000"
-    android:fitsSystemWindows="true">
-    
-    <androidx.camera.view.PreviewView android:id="@+id/previewView" android:layout_width="match_parent" android:layout_height="match_parent"/>
-    <jp.kamijima.safear.v18.OverlayView android:id="@+id/overlay" android:layout_width="match_parent" android:layout_height="match_parent"/>
-
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="60dp"
-        android:background="#44000000"
-        android:orientation="horizontal"
-        android:gravity="center_vertical"
-        android:paddingHorizontal="20dp">
-        <ImageButton android:id="@+id/btnSwitchCam" android:layout_width="40dp" android:layout_height="40dp" android:background="@android:drawable/ic_menu_camera" android:backgroundTint="#00FFCC" android:alpha="0.9"/>
-        <View android:layout_width="0dp" android:layout_height="1dp" android:layout_weight="1"/>
-        <TextView android:text="SYSTEM: HYPER SENSE" android:textColor="#00FFCC" android:typeface="monospace" android:textSize="12sp" android:textStyle="bold" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
-        <View android:layout_width="0dp" android:layout_height="1dp" android:layout_weight="1"/>
-        <ImageButton android:id="@+id/btnSettings" android:layout_width="40dp" android:layout_height="40dp" android:background="@android:drawable/ic_menu_preferences" android:backgroundTint="#00FFCC" android:alpha="0.9"/>
-    </LinearLayout>
-
-    <LinearLayout
-        android:id="@+id/panelSettings"
-        android:layout_width="320dp"
-        android:layout_height="wrap_content"
-        android:layout_gravity="center"
-        android:orientation="vertical"
-        android:background="#EE111111"
-        android:padding="24dp"
-        android:visibility="gone"
-        android:elevation="20dp">
-        <TextView android:text="HYPER SETTINGS" android:textColor="#00FFCC" android:textSize="18sp" android:textStyle="bold" android:typeface="monospace" android:layout_marginBottom="20dp"/>
-        <Switch android:id="@+id/swTorch" android:text="TORCH LIGHT" android:textColor="#FFFFFF" android:typeface="monospace" android:layout_width="match_parent" android:layout_height="wrap_content" android:padding="10dp" android:thumbTint="#00FFCC" android:trackTint="#5500FFCC"/>
-        <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#333333" android:layout_marginVertical="10dp"/>
-        <Switch android:id="@+id/swVoice" android:text="VOICE ALERT" android:textColor="#FFFFFF" android:typeface="monospace" android:checked="true" android:layout_width="match_parent" android:layout_height="wrap_content" android:padding="10dp" android:thumbTint="#00FFCC" android:trackTint="#5500FFCC"/>
-        <Switch android:id="@+id/swFocus" android:text="HYPER TRACKING" android:textColor="#FFFFFF" android:typeface="monospace" android:checked="true" android:layout_width="match_parent" android:layout_height="wrap_content" android:padding="10dp" android:thumbTint="#00FFCC" android:trackTint="#5500FFCC"/>
-        <Button android:id="@+id/btnClose" android:text="CLOSE" android:typeface="monospace" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="20dp" android:backgroundTint="#333333" android:textColor="#00FFCC"/>
-    </LinearLayout>
-</FrameLayout>
-""")
-
-    # 9. OverlayView (半透明・色分け強化)
-    write_file(z, f"{PACKAGE_DIR}/OverlayView.java", """
-package jp.kamijima.safear.v18;
-
-import android.content.Context;
-import android.graphics.*;
-import android.util.AttributeSet;
-import android.view.View;
-import java.util.*;
-
-public class OverlayView extends View {
-    public static class Tracked {
-        public RectF box;
-        public String label; 
-        public boolean isApproaching;
-        public int baseColor; // ベース色
-    }
-    
-    private final Paint pStroke = new Paint();
-    private final Paint pFill = new Paint();
-    private final Paint pText = new Paint();
-    private final Paint pWarnText = new Paint();
-    private final Path trianglePath = new Path();
-
-    private List<Tracked> items = new ArrayList<>();
-    
-    public OverlayView(Context c, AttributeSet a) {
-        super(c, a);
-        
-        pStroke.setStyle(Paint.Style.STROKE);
-        pStroke.setStrokeWidth(6f);
-        pStroke.setStrokeCap(Paint.Cap.ROUND);
-        pStroke.setAntiAlias(true);
-        
-        pFill.setStyle(Paint.Style.FILL);
-        pFill.setAntiAlias(true);
-        
-        pText.setColor(Color.WHITE);
-        pText.setTypeface(Typeface.create(Typeface.MONOSPACE, Typeface.BOLD));
-        pText.setTextSize(36f);
-        pText.setShadowLayer(4f, 0f, 0f, Color.BLACK);
-        
-        pWarnText.setColor(Color.YELLOW);
-        pWarnText.setTypeface(Typeface.DEFAULT_BOLD);
-        pWarnText.setTextSize(60f);
-        pWarnText.setTextAlign(Paint.Align.CENTER);
-        pWarnText.setShadowLayer(5f, 0f, 0f, Color.BLACK);
-    }
-    
-    public void setItems(List<Tracked> list) {
-        this.items = list;
-        postInvalidate();
-    }
-    
-    @Override protected void onDraw(Canvas c) {
-        super.onDraw(c);
-        int w = getWidth(); int h = getHeight();
-        if (w == 0 || h == 0 || items == null) return;
-
-        for (Tracked t : items) {
-            if (t.box == null) continue;
-
-            // 1. 色の設定
-            int color = t.baseColor;
-            if (t.isApproaching) color = Color.RED; // 接近時は強制赤
-
-            // 2. 半透明の塗りつぶし (Alpha 40/255)
-            pFill.setColor(color);
-            pFill.setAlpha(40); 
-            c.drawRect(t.box, pFill);
-
-            // 3. 枠線
-            pStroke.setColor(color);
-            pStroke.setShadowLayer(10f, 0f, 0f, color);
-            c.drawRect(t.box, pStroke);
-
-            // 4. 警告表示
-            if (t.isApproaching) {
-                drawWarningSign(c, t.box.centerX(), t.box.top - 50);
-            }
-
-            // 5. ラベル
-            String info = t.label;
-            float txtW = pText.measureText(info);
-            float labelX = t.box.left;
-            float labelY = t.box.top - 10;
-            if (labelY < 50) labelY = t.box.bottom + 40;
-
-            pFill.setAlpha(200); // ラベル背景は濃く
-            c.drawRect(labelX - 5, labelY - 35, labelX + txtW + 10, labelY + 10, pFill);
-            c.drawText(info, labelX, labelY, pText);
-        }
-    }
-
-    private void drawWarningSign(Canvas c, float cx, float cy) {
-        float size = 80f; float half = size / 2f;
-        trianglePath.reset();
-        trianglePath.moveTo(cx, cy - half);
-        trianglePath.lineTo(cx + half, cy + half);
-        trianglePath.lineTo(cx - half, cy + half);
-        trianglePath.close();
-        
-        pFill.setColor(Color.YELLOW);
-        pFill.setAlpha(255);
-        c.drawPath(trianglePath, pFill);
-        
-        pStroke.setColor(Color.BLACK);
-        pStroke.setStrokeWidth(4f);
-        c.drawPath(trianglePath, pStroke);
-        
-        pText.setColor(Color.BLACK);
-        pText.setTextSize(60f);
-        float tw = pText.measureText("!");
-        c.drawText("!", cx - tw/2, cy + half - 10, pText);
-        
-        // Restore text color
-        pText.setColor(Color.WHITE); 
-    }
-}
-""")
-
-    # 10. MainActivity (高精度認識ロジック)
-    write_file(z, f"{PACKAGE_DIR}/MainActivity.java", """
-package jp.kamijima.safear.v18;
-
-import android.Manifest;
-import android.content.pm.PackageManager;
-import android.graphics.*;
-import android.os.*;
-import android.speech.tts.TextToSpeech;
-import android.util.Log;
-import android.util.Size; // For resolution
-import android.view.View;
-import android.widget.*;
-import androidx.annotation.NonNull;
-import androidx.appcompat.app.AppCompatActivity;
-import androidx.camera.core.*;
-import androidx.camera.lifecycle.ProcessCameraProvider;
-import androidx.camera.view.PreviewView;
-import androidx.core.app.ActivityCompat;
-import androidx.core.content.ContextCompat;
-import com.google.common.util.concurrent.ListenableFuture;
-import com.google.mlkit.vision.common.InputImage;
-import com.google.mlkit.vision.objects.*;
-import com.google.mlkit.vision.objects.defaults.ObjectDetectorOptions;
-import java.util.*;
-import java.util.concurrent.*;
-
-public class MainActivity extends AppCompatActivity implements TextToSpeech.OnInitListener {
-    private static final String TAG = "SafeAR";
-    private PreviewView previewView;
-    private OverlayView overlay;
-    private ExecutorService cameraExecutor;
-    private TextToSpeech tts;
-    
-    private ImageButton btnSettings, btnSwitchCam;
-    private View panelSettings;
-    private Button btnClose;
-    private Switch swVoice, swFocus, swTorch;
-
-    private boolean isVoiceOn = true;
-    private boolean isTrackingOn = true;
-    private long lastSpeakTime = 0;
-    
-    // Tracking Memory
-    private Map<Integer, Long> lastTimeMap = new ConcurrentHashMap<>();
-    private Map<Integer, Float> lastWidthMap = new ConcurrentHashMap<>();
-    private Map<Integer, RectF> smoothedBoxes = new ConcurrentHashMap<>();
-    
-    private ProcessCameraProvider cameraProvider;
-    private CameraSelector currentCameraSelector = CameraSelector.DEFAULT_BACK_CAMERA;
-    private Camera camera;
-    
-    @Override protected void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_main);
-        initUI();
-        cameraExecutor = Executors.newSingleThreadExecutor();
-        tts = new TextToSpeech(this, this);
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
-            startCamera();
-        } else {
-            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.CAMERA}, 10);
-        }
-    }
-
-    private void initUI() {
-        previewView = findViewById(R.id.previewView);
-        overlay = findViewById(R.id.overlay);
-        btnSettings = findViewById(R.id.btnSettings);
-        btnSwitchCam = findViewById(R.id.btnSwitchCam);
-        panelSettings = findViewById(R.id.panelSettings);
-        btnClose = findViewById(R.id.btnClose);
-        swVoice = findViewById(R.id.swVoice);
-        swFocus = findViewById(R.id.swFocus);
-        swTorch = findViewById(R.id.swTorch);
-
-        btnSettings.setOnClickListener(v -> panelSettings.setVisibility(View.VISIBLE));
-        btnClose.setOnClickListener(v -> panelSettings.setVisibility(View.GONE));
-        btnSwitchCam.setOnClickListener(v -> switchCamera());
-
-        swVoice.setOnCheckedChangeListener((v,c) -> isVoiceOn = c);
-        swFocus.setOnCheckedChangeListener((v,c) -> isTrackingOn = c);
-        
-        swTorch.setOnCheckedChangeListener((v, isChecked) -> {
-            if (camera != null && camera.getCameraInfo().hasFlashUnit()) {
-                camera.getCameraControl().enableTorch(isChecked);
-            } else { v.setChecked(false); }
-        });
-    }
-
-    private void switchCamera() {
-        if (cameraProvider == null) return;
-        try {
-            if (currentCameraSelector == CameraSelector.DEFAULT_BACK_CAMERA) {
-                if (cameraProvider.hasCamera(CameraSelector.DEFAULT_FRONT_CAMERA)) {
-                    currentCameraSelector = CameraSelector.DEFAULT_FRONT_CAMERA;
-                }
-            } else {
-                currentCameraSelector = CameraSelector.DEFAULT_BACK_CAMERA;
-            }
-            swTorch.setChecked(false);
-            bindCameraUseCases();
-        } catch(Exception e) { Log.e(TAG, "Switch failed", e); }
-    }
-    
-    @Override public void onInit(int status) {
-        if (status == TextToSpeech.SUCCESS) tts.setLanguage(Locale.JAPAN);
-    }
-    
-    private void speak(String text) {
-        if(isVoiceOn && (System.currentTimeMillis() - lastSpeakTime > 3000)) {
-            tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "ID");
-            lastSpeakTime = System.currentTimeMillis();
-        }
-    }
-
-    @Override public void onRequestPermissionsResult(int rc, String[] perms, int[] res) {
-        super.onRequestPermissionsResult(rc, perms, res);
-        if (res.length > 0 && res[0] == PackageManager.PERMISSION_GRANTED) startCamera();
-    }
-
-    private void startCamera() {
-        ListenableFuture<ProcessCameraProvider> future = ProcessCameraProvider.getInstance(this);
-        future.addListener(() -> {
-            try {
-                cameraProvider = future.get();
-                bindCameraUseCases();
-            } catch (Exception e) { Log.e(TAG, "Init Error", e); }
-        }, ContextCompat.getMainExecutor(this));
-    }
-    
-    private void bindCameraUseCases() {
-        if (cameraProvider == null) return;
-        try {
-            cameraProvider.unbindAll();
-            
-            Preview preview = new Preview.Builder().build();
-            preview.setSurfaceProvider(previewView.getSurfaceProvider());
-            
-            // Hyper Sense: High Resolution Analysis
-            ImageAnalysis analysis = new ImageAnalysis.Builder()
-                .setTargetResolution(new Size(1280, 720)) // HD解析で精度アップ
-                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                .build();
-            
-            ObjectDetector detector = ObjectDetection.getClient(
-                new ObjectDetectorOptions.Builder()
-                    .setDetectorMode(ObjectDetectorOptions.STREAM_MODE)
-                    .enableMultipleObjects()
-                    .enableClassification() // 分類必須
-                    .build()
-            );
-
-            analysis.setAnalyzer(cameraExecutor, proxy -> {
-                try {
-                    InputImage img = InputImage.fromMediaImage(proxy.getImage(), proxy.getImageInfo().getRotationDegrees());
-                    if (img != null) {
-                        detector.process(img)
-                            .addOnSuccessListener(objects -> drawObjects(objects, proxy))
-                            .addOnFailureListener(e -> proxy.close());
-                    } else proxy.close();
-                } catch (Exception e) { proxy.close(); }
-            });
-            camera = cameraProvider.bindToLifecycle(this, currentCameraSelector, preview, analysis);
-        } catch(Exception e) { Log.e(TAG, "Bind Error", e); }
-    }
-
-    private void drawObjects(List<DetectedObject> objects, ImageProxy proxy) {
-        try {
-            int vw = overlay.getWidth(); int vh = overlay.getHeight();
-            if (vw == 0 || vh == 0) return;
-            
-            int rot = proxy.getImageInfo().getRotationDegrees();
-            int iw = (rot == 90 || rot == 270) ? proxy.getHeight() : proxy.getWidth();
-            int ih = (rot == 90 || rot == 270) ? proxy.getWidth() : proxy.getHeight();
-            float sx = (float)vw / iw; float sy = (float)vh / ih;
-            
-            long now = System.currentTimeMillis();
-            boolean alertNeeded = false;
-            String alertWord = "";
-
-            List<OverlayView.Tracked> list = new ArrayList<>();
-            Set<Integer> currentIds = new HashSet<>();
-
-            for(DetectedObject obj : objects) {
-                Integer id = obj.getTrackingId();
-                if (id == null) continue;
-                currentIds.add(id);
-
-                // 座標変換とスムージング
-                Rect r = obj.getBoundingBox();
-                RectF currentBox = new RectF(r.left*sx, r.top*sy, r.right*sx, r.bottom*sy);
-                
-                if (smoothedBoxes.containsKey(id)) {
-                    RectF prev = smoothedBoxes.get(id);
-                    // 補間を強くして滑らかに (0.3)
-                    float alpha = 0.3f; 
-                    currentBox.left = prev.left + alpha * (currentBox.left - prev.left);
-                    currentBox.top = prev.top + alpha * (currentBox.top - prev.top);
-                    currentBox.right = prev.right + alpha * (currentBox.right - prev.right);
-                    currentBox.bottom = prev.bottom + alpha * (currentBox.bottom - prev.bottom);
-                }
-                smoothedBoxes.put(id, currentBox);
-
-                // カテゴリ判定と色分け
-                String label = "物体";
-                int color = Color.WHITE; // Default
-                
-                for(DetectedObject.Label l : obj.getLabels()) {
-                    String text = l.getText().toLowerCase();
-                    if (text.contains("person") || text.contains("human")) {
-                        label = "HUMAN"; color = Color.CYAN;
-                    } else if (text.contains("car") || text.contains("vehicle") || text.contains("bus")) {
-                        label = "CAR"; color = Color.RED;
-                    } else if (text.contains("bike") || text.contains("bicycle")) {
-                        label = "BIKE"; color = Color.GREEN;
-                    }
-                }
-                // デフォルトのままなら物体
-                if(label.equals("物体")) {
-                     label = "UNKNOWN"; color = Color.LTGRAY;
-                }
-
-                OverlayView.Tracked t = new OverlayView.Tracked();
-                t.box = currentBox;
-                t.label = label;
-                t.baseColor = color;
-                t.isApproaching = false;
-
-                // 接近判定 (TTC)
-                if (lastTimeMap.containsKey(id)) {
-                    long prevTime = lastTimeMap.get(id);
-                    float prevW = lastWidthMap.get(id);
-                    long dt = now - prevTime;
-                    if (dt > 0 && prevW > 0) {
-                        float growth = t.box.width() / prevW;
-                        // 1.02倍以上の急拡大で接近とみなす
-                        if (growth > 1.02f) {
-                            t.isApproaching = true;
-                            alertNeeded = true;
-                            alertWord = "注意！" + label + "接近";
-                        }
-                    }
-                }
-                lastTimeMap.put(id, now);
-                lastWidthMap.put(id, t.box.width());
-
-                // 「常に認識」: フィルタリングせず全て追加
-                list.add(t);
-            }
-            
-            // ロストしたIDのゴミ掃除
-            smoothedBoxes.keySet().retainAll(currentIds);
-            
-            overlay.setItems(list);
-            
-            if (alertNeeded) speak(alertWord);
-            
-        } catch(Exception t) { Log.e(TAG, "Draw Error", t); } finally { proxy.close(); }
-    }
-    
-    @Override protected void onDestroy() {
-        if (tts != null) { tts.stop(); tts.shutdown(); }
-        super.onDestroy();
-        cameraExecutor.shutdown();
-    }
-}
-""")
-
-print("✅ GitHub Repository Zip Created: SafeAR_Hyper_V18.zip")
