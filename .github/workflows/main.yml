@@ -1,4 +1,4 @@
-name: Build Peugeot i-Cockpit App
+name: Build Peugeot i-Cockpit (Final Fix)
 
 on:
   workflow_dispatch:
@@ -33,8 +33,8 @@ jobs:
         run: |
           set -euxo pipefail
 
-          # パッケージ名を変更して、Android Autoに「新しいアプリ」と認識させる
-          PKG="jp.kazukun.peugeot.cockpit"
+          # パッケージ名を変更し、キャッシュ問題を回避
+          PKG="jp.kazukun.peugeot.finalcockpit"
           APP_LABEL="i-Cockpit"
 
           # 1. Settings
@@ -53,7 +53,7 @@ jobs:
                   mavenCentral()
               }
           }
-          rootProject.name = "PeugeotCockpit"
+          rootProject.name = "PeugeotFinal"
           include(":app")
           EOF
 
@@ -75,7 +75,7 @@ jobs:
           EOF
 
           # 4. App Module Setup
-          mkdir -p app/src/main/{java/jp/kazukun/peugeot/cockpit,res/xml,res/values,res/drawable,res/mipmap-anydpi-v26}
+          mkdir -p app/src/main/{java/jp/kazukun/peugeot/finalcockpit,res/xml,res/values,res/drawable,res/mipmap-anydpi-v26}
 
           cat > app/build.gradle.kts <<EOF
           plugins {
@@ -91,8 +91,8 @@ jobs:
                   applicationId = "$PKG"
                   minSdk = 26
                   targetSdk = 34
-                  versionCode = 5
-                  versionName = "5.0.LionFix"
+                  versionCode = 6
+                  versionName = "6.0.Stable"
               }
               buildTypes {
                   release {
@@ -120,6 +120,7 @@ jobs:
           cat > app/src/main/res/values/strings.xml <<EOF
           <resources>
               <string name="app_name">$APP_LABEL</string>
+              <string name="channel_name">Cockpit Service</string>
           </resources>
           EOF
 
@@ -130,22 +131,16 @@ jobs:
           </automotiveApp>
           EOF
 
-          # ★アイコン: Peugeotスタイルのモダンな盾（Shield）デザイン
+          # Icons
           cat > app/src/main/res/drawable/ic_launcher_background.xml <<EOF
-          <vector xmlns:android="http://schemas.android.com/apk/res/android"
-              android:width="108dp" android:height="108dp"
-              android:viewportWidth="108" android:viewportHeight="108">
+          <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
               <path android:fillColor="#000000" android:pathData="M0,0h108v108h-108z"/>
           </vector>
           EOF
           
-          # シャープなライオンの爪痕/盾をイメージしたアイコン
           cat > app/src/main/res/drawable/ic_launcher_foreground.xml <<EOF
-          <vector xmlns:android="http://schemas.android.com/apk/res/android"
-              android:width="108dp" android:height="108dp"
-              android:viewportWidth="108" android:viewportHeight="108">
+          <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
               <path android:fillColor="#E0E0E0" android:pathData="M54,18 L24,30 L30,75 L54,90 L78,75 L84,30 L54,18 Z M54,28 L74,38 L70,70 L54,80 L38,70 L34,38 L54,28 Z"/>
-              <path android:fillColor="#000000" android:pathData="M54,35 L54,75" android:strokeWidth="2" android:strokeColor="#000000"/>
           </vector>
           EOF
           
@@ -176,14 +171,12 @@ jobs:
                   android:roundIcon="@mipmap/ic_launcher_round"
                   android:theme="@style/Theme.AppCompat.NoActionBar">
 
-                  <meta-data
-                      android:name="com.google.android.gms.car.application"
-                      android:resource="@xml/automotive_app_desc" />
+                  <meta-data android:name="com.google.android.gms.car.application" android:resource="@xml/automotive_app_desc" />
 
                   <service
                       android:name=".LionService"
                       android:exported="true"
-                      android:foregroundServiceType="location|mediaPlayback">
+                      android:foregroundServiceType="mediaPlayback|location">
                       <intent-filter>
                           <action android:name="android.media.browse.MediaBrowserService" />
                       </intent-filter>
@@ -203,8 +196,8 @@ jobs:
           EOF
 
           # --- Kotlin Code ---
-          # 1. MainActivity (権限リクエスト)
-          cat > app/src/main/java/jp/kazukun/peugeot/cockpit/MainActivity.kt <<EOF
+          # 1. MainActivity (Request Permissions)
+          cat > app/src/main/java/jp/kazukun/peugeot/finalcockpit/MainActivity.kt <<EOF
           package $PKG
           import android.Manifest
           import android.content.pm.PackageManager
@@ -228,23 +221,27 @@ jobs:
           }
           EOF
 
-          # 2. LionService (Peugeot UI Logic)
-          # ★修正完了: Kotlinの $ を \$ にエスケープしました
-          cat > app/src/main/java/jp/kazukun/peugeot/cockpit/LionService.kt <<EOF
+          # 2. LionService (UI Logic with Notification Fix)
+          cat > app/src/main/java/jp/kazukun/peugeot/finalcockpit/LionService.kt <<EOF
           package $PKG
 
           import android.Manifest
+          import android.app.Notification
+          import android.app.NotificationChannel
+          import android.app.NotificationManager
           import android.content.Context
           import android.content.pm.PackageManager
           import android.graphics.*
           import android.location.Location
           import android.location.LocationListener
           import android.location.LocationManager
+          import android.os.Build
           import android.os.Bundle
           import android.support.v4.media.MediaBrowserCompat
           import android.support.v4.media.MediaMetadataCompat
           import android.support.v4.media.session.MediaSessionCompat
           import android.support.v4.media.session.PlaybackStateCompat
+          import androidx.core.app.NotificationCompat
           import androidx.core.content.ContextCompat
           import androidx.media.MediaBrowserServiceCompat
           import kotlinx.coroutines.*
@@ -260,37 +257,38 @@ jobs:
               private var currentSpeed = 0f
               private var modeIndex = 0
               
+              // Colors
               private val COLOR_ONYX = Color.BLACK
               private val COLOR_COPPER = Color.rgb(205, 167, 120)
               private val COLOR_KRYPTONITE = Color.rgb(208, 255, 20)
               private val COLOR_ICE = Color.WHITE
 
-              private val WIDTH = 400 
+              private val WIDTH = 400
               private val HEIGHT = 400
               private val bitmap = Bitmap.createBitmap(WIDTH, HEIGHT, Bitmap.Config.ARGB_8888)
               private val canvas = Canvas(bitmap)
               private val paint = Paint().apply { isAntiAlias = true }
-              
               private val speedPaint = Paint().apply {
                   isAntiAlias = true
                   color = COLOR_ICE
                   textSize = 80f
                   textAlign = Paint.Align.CENTER
                   typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
-                  setShadowLayer(10f, 0f, 0f, COLOR_KRYPTONITE)
               }
               private val labelPaint = Paint().apply {
                   isAntiAlias = true
                   color = COLOR_COPPER
                   textSize = 24f
                   textAlign = Paint.Align.CENTER
-                  letterSpacing = 0.2f
               }
 
               override fun onCreate() {
                   super.onCreate()
                   
-                  mediaSession = MediaSessionCompat(this, "LionCockpitSession").apply {
+                  // ★最重要修正: サービス起動時に通知を出す（これがないと強制終了される）
+                  startForegroundServiceNotification()
+
+                  mediaSession = MediaSessionCompat(this, "LionSession").apply {
                       setCallback(object : MediaSessionCompat.Callback() {
                           override fun onPlay() { updateMode(1) }
                           override fun onPause() { updateMode(1) }
@@ -298,6 +296,7 @@ jobs:
                           override fun onSkipToPrevious() { updateMode(-1) }
                       })
                       isActive = true
+                      // 即座に再生状態にしてUIを表示させる
                       setPlaybackState(PlaybackStateCompat.Builder()
                           .setActions(PlaybackStateCompat.ACTION_PLAY or PlaybackStateCompat.ACTION_PAUSE or PlaybackStateCompat.ACTION_SKIP_TO_NEXT)
                           .setState(PlaybackStateCompat.STATE_PLAYING, 0L, 1.0f)
@@ -310,6 +309,35 @@ jobs:
                   
                   setupLocation()
                   startLoop()
+              }
+
+              // ★通知作成メソッド
+              private fun startForegroundServiceNotification() {
+                  val channelId = "cockpit_channel"
+                  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                      val channel = NotificationChannel(channelId, "Cockpit Service", NotificationManager.IMPORTANCE_LOW)
+                      getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
+                  }
+                  
+                  val notification: Notification = NotificationCompat.Builder(this, channelId)
+                      .setContentTitle("i-Cockpit Active")
+                      .setContentText("Peugeot Style Dashboard is Running")
+                      .setSmallIcon(android.R.drawable.ic_media_play)
+                      .setOngoing(true)
+                      .build()
+
+                  // Android 14対応: タイプを指定して開始
+                  try {
+                      if (Build.VERSION.SDK_INT >= 34) {
+                          startForeground(1001, notification, 
+                              android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK or 
+                              android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION)
+                      } else {
+                          startForeground(1001, notification)
+                      }
+                  } catch (e: Exception) {
+                      e.printStackTrace()
+                  }
               }
 
               private fun updateMode(delta: Int) {
@@ -342,7 +370,6 @@ jobs:
 
               private fun drawCockpit() {
                   canvas.drawColor(COLOR_ONYX)
-                  
                   val cx = WIDTH / 2f
                   val cy = HEIGHT / 2f
                   
@@ -369,7 +396,7 @@ jobs:
                   canvas.drawRect(cx - 150, cy + 80, cx - 50, cy + 90, paint)
                   paint.color = COLOR_ICE
                   canvas.drawRect(cx - 150, cy + 80, cx - 150 + (100 * speedRatio), cy + 90, paint)
-
+                  
                   paint.color = Color.DKGRAY
                   canvas.drawRect(cx + 50, cy + 80, cx + 150, cy + 90, paint)
                   paint.color = COLOR_ICE
@@ -388,7 +415,7 @@ jobs:
               private fun updateMetadata() {
                   val metadata = MediaMetadataCompat.Builder()
                       .putString(MediaMetadataCompat.METADATA_KEY_TITLE, "i-Cockpit")
-                      // ★ここを修正しました: \${...}
+                      // Kotlinエスケープ: $ -> \$
                       .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, "\${currentSpeed.toInt()} km/h")
                       .putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, bitmap)
                       .build()
@@ -401,12 +428,15 @@ jobs:
                   updateMetadata()
               }
 
+              // ★重要: これがAndroid Auto接続許可の鍵
+              override fun onGetRoot(clientPackageName: String, clientUid: Int, rootHints: Bundle?): BrowserRoot {
+                  // 全てのクライアント（Android Auto含む）を許可する
+                  return BrowserRoot("ROOT", null)
+              }
+              
+              // ★重要: ここで即座に結果を返さないと無限ローディングになる
               override fun onLoadChildren(parentId: String, result: Result<MutableList<MediaBrowserCompat.MediaItem>>) {
                   result.sendResult(mutableListOf())
-              }
-
-              override fun onGetRoot(clientPackageName: String, clientUid: Int, rootHints: Bundle?): BrowserRoot {
-                  return BrowserRoot("ROOT", null)
               }
               
               override fun onDestroy() {
@@ -432,5 +462,5 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Peugeot-Cockpit-APK
+          name: Peugeot-FinalFix-APK
           path: app/build/outputs/apk/debug/app-debug.apk
