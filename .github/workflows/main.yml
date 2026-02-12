@@ -1,4 +1,4 @@
-name: Build Peugeot Production Ready
+name: Build Peugeot Syntax Fixed
 
 on:
   workflow_dispatch:
@@ -20,7 +20,6 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      # ★安定構成: AGP 8.2.0 に適合する Gradle 8.2 を使用
       - name: Install Gradle 8.2
         shell: bash
         run: |
@@ -34,15 +33,13 @@ jobs:
         run: |
           set -euxo pipefail
 
-          # 変数定義（設定ファイル用）
-          PKG="jp.kazukun.peugeot.production"
+          PKG="jp.kazukun.peugeot.syntaxfix"
           APP_LABEL="i-Cockpit"
 
           # ---------------------------------------------------------
-          # 1. 設定ファイル群 (変数展開が必要なので <<EOF を使用)
+          # 1. Configuration Files
           # ---------------------------------------------------------
 
-          # settings.gradle.kts
           cat > settings.gradle.kts <<EOF
           pluginManagement {
               repositories {
@@ -58,11 +55,10 @@ jobs:
                   mavenCentral()
               }
           }
-          rootProject.name = "PeugeotProduction"
+          rootProject.name = "PeugeotSyntaxFix"
           include(":app")
           EOF
 
-          # build.gradle.kts (Project) - 安定版 AGP 8.2.0
           cat > build.gradle.kts <<EOF
           plugins {
               id("com.android.application") version "8.2.0" apply false
@@ -70,7 +66,6 @@ jobs:
           }
           EOF
 
-          # gradle.properties
           cat > gradle.properties <<EOF
           org.gradle.jvmargs=-Xmx4g -XX:+UseParallelGC
           android.useAndroidX=true
@@ -79,10 +74,8 @@ jobs:
           android.nonTransitiveRClass=true
           EOF
 
-          # アプリ用ディレクトリ作成
-          mkdir -p app/src/main/{java/jp/kazukun/peugeot/production,res/xml,res/values,res/drawable,res/mipmap-anydpi-v26}
+          mkdir -p app/src/main/{java/jp/kazukun/peugeot/syntaxfix,res/xml,res/values,res/drawable,res/mipmap-anydpi-v26}
 
-          # build.gradle.kts (App Module)
           cat > app/build.gradle.kts <<EOF
           plugins {
               id("com.android.application")
@@ -98,7 +91,7 @@ jobs:
                   minSdk = 26
                   targetSdk = 34
                   versionCode = 1
-                  versionName = "1.0.Prod"
+                  versionName = "1.0.SyntaxFix"
               }
               buildTypes {
                   release { isMinifyEnabled = false }
@@ -113,21 +106,18 @@ jobs:
           dependencies {
               implementation("androidx.core:core-ktx:1.12.0")
               implementation("androidx.appcompat:appcompat:1.6.1")
-              // MediaBrowserServiceCompat (必須)
               implementation("androidx.media:media:1.7.0")
               implementation("com.google.android.gms:play-services-location:21.0.1")
               implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
           }
           EOF
 
-          # strings.xml
           cat > app/src/main/res/values/strings.xml <<EOF
           <resources>
               <string name="app_name">$APP_LABEL</string>
           </resources>
           EOF
 
-          # automotive_app_desc.xml (レポート準拠: Media)
           cat > app/src/main/res/xml/automotive_app_desc.xml <<EOF
           <?xml version="1.0" encoding="utf-8"?>
           <automotiveApp xmlns:android="http://schemas.android.com/apk/res/android">
@@ -135,7 +125,6 @@ jobs:
           </automotiveApp>
           EOF
 
-          # Manifest
           cat > app/src/main/AndroidManifest.xml <<EOF
           <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="$PKG">
@@ -145,9 +134,7 @@ jobs:
               <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
               <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
               <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-              
               <uses-feature android:name="android.hardware.type.automotive" android:required="false" />
-
               <application
                   android:label="$APP_LABEL"
                   android:allowBackup="false"
@@ -155,10 +142,8 @@ jobs:
                   android:icon="@mipmap/ic_launcher"
                   android:roundIcon="@mipmap/ic_launcher_round"
                   android:theme="@style/Theme.AppCompat.NoActionBar">
-
                   <meta-data android:name="com.google.android.gms.car.application" android:resource="@xml/automotive_app_desc" />
                   <meta-data android:name="com.android.automotive" android:resource="@xml/automotive_app_desc" />
-
                   <service
                       android:name=".LionService"
                       android:exported="true"
@@ -167,7 +152,6 @@ jobs:
                           <action android:name="android.media.browse.MediaBrowserService" />
                       </intent-filter>
                   </service>
-
                   <activity
                       android:name=".MainActivity"
                       android:exported="true"
@@ -182,7 +166,6 @@ jobs:
           </manifest>
           EOF
 
-          # アイコン群（クォート付きEOFで保護しても変数は使っていないのでOK）
           cat > app/src/main/res/drawable/ic_launcher_background.xml <<'EOF'
           <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
               <path android:fillColor="#000000" android:pathData="M0,0h108v108h-108z"/>
@@ -203,27 +186,21 @@ jobs:
           EOF
           cp app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml
 
-
           # ---------------------------------------------------------
-          # 2. Kotlinソースコード (<<'EOF' で完全保護)
-          # ※パッケージ名はハードコードして整合性を保つ
+          # 2. Kotlin Code (EOF protection active)
           # ---------------------------------------------------------
 
-          # 1. CockpitRenderer.kt
-          cat > app/src/main/java/jp/kazukun/peugeot/production/CockpitRenderer.kt <<'EOF'
-          package jp.kazukun.peugeot.production
+          cat > app/src/main/java/jp/kazukun/peugeot/syntaxfix/CockpitRenderer.kt <<'EOF'
+          package jp.kazukun.peugeot.syntaxfix
           import android.graphics.*
           import kotlin.math.*
 
           class CockpitRenderer {
-              // Peugeot Colors
               private val COLOR_COPPER = Color.rgb(205, 167, 120)
               private val COLOR_KRYPTONITE = Color.rgb(208, 255, 20)
               private val COLOR_ICE = Color.WHITE
               private val COLOR_METAL = Color.parseColor("#424242")
-
               private val paint = Paint().apply { isAntiAlias = true }
-              
               private val speedPaint = Paint().apply {
                   isAntiAlias = true
                   color = COLOR_ICE
@@ -249,8 +226,6 @@ jobs:
                   val cx = width / 2f
                   val cy = height / 2f
                   val r = min(width, height) * 0.45f
-                  
-                  // 背景グラデーション
                   val shader = LinearGradient(0f, 0f, 0f, height.toFloat(),
                       intArrayOf(Color.BLACK, Color.parseColor("#1a1a1a"), Color.BLACK),
                       null, Shader.TileMode.CLAMP)
@@ -258,13 +233,10 @@ jobs:
                   paint.style = Paint.Style.FILL
                   canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paint)
                   paint.shader = null
-
-                  // 六角形フレーム
                   paint.style = Paint.Style.STROKE
                   paint.strokeWidth = 6f
                   paint.color = if (mode == 0) COLOR_COPPER else COLOR_KRYPTONITE
                   paint.alpha = 255
-                  
                   val path = Path()
                   for (i in 0..6) {
                       val angle = (i * 60 - 30) * (PI / 180.0)
@@ -274,15 +246,12 @@ jobs:
                   }
                   path.close()
                   canvas.drawPath(path, paint)
-
-                  // 速度バー (Claws)
                   paint.style = Paint.Style.FILL
                   paint.strokeWidth = 0f
                   val speedRatio = (speed / 180f).coerceIn(0f, 1f)
                   val barWidth = r * 0.9f
                   val barHeight = 15f
                   val barY = cy + r * 0.2f
-                  
                   paint.color = COLOR_METAL
                   canvas.drawRect(cx - barWidth, barY, cx - 40f, barY + barHeight, paint)
                   paint.color = if (mode == 0) COLOR_ICE else COLOR_KRYPTONITE
@@ -290,7 +259,6 @@ jobs:
                   if (leftFill > 0) {
                       canvas.drawRect(cx - barWidth, barY, cx - barWidth + leftFill, barY + barHeight, paint)
                   }
-
                   paint.color = COLOR_METAL
                   canvas.drawRect(cx + 40f, barY, cx + barWidth, barY + barHeight, paint)
                   paint.color = if (mode == 0) COLOR_ICE else COLOR_KRYPTONITE
@@ -298,19 +266,14 @@ jobs:
                   if (rightFill > 0) {
                       canvas.drawRect(cx + 40f + (barWidth - 40f - rightFill), barY, cx + barWidth, barY + barHeight, paint)
                   }
-
-                  // 文字情報
                   speedPaint.textSize = min(width, height) * 0.25f
                   val textHeight = speedPaint.descent() - speedPaint.ascent()
                   val textOffset = (textHeight / 2) - speedPaint.descent()
-                  
                   val speedStr = speed.toInt().toString()
                   canvas.drawText(speedStr, cx, cy + textOffset - 20f, speedPaint)
-
                   labelPaint.textSize = min(width, height) * 0.08f
                   labelPaint.color = if (mode == 0) COLOR_COPPER else COLOR_KRYPTONITE
                   canvas.drawText("KM/H", cx, cy + r * 0.6f, labelPaint)
-                  
                   modePaint.textSize = min(width, height) * 0.06f
                   val modeText = if (mode == 0) "COMFORT" else "SPORT"
                   canvas.drawText(modeText, cx, cy - r * 0.6f, modePaint)
@@ -318,9 +281,8 @@ jobs:
           }
           EOF
 
-          # 2. MainActivity.kt
-          cat > app/src/main/java/jp/kazukun/peugeot/production/MainActivity.kt <<'EOF'
-          package jp.kazukun.peugeot.production
+          cat > app/src/main/java/jp/kazukun/peugeot/syntaxfix/MainActivity.kt <<'EOF'
+          package jp.kazukun.peugeot.syntaxfix
           import android.Manifest
           import android.content.Context
           import android.content.Intent
@@ -342,7 +304,6 @@ jobs:
               var currentSpeed = 0f
               var currentMode = 0
               var time = 0.0
-              
               override fun onDraw(canvas: Canvas) {
                   super.onDraw(canvas)
                   renderer.draw(canvas, width, height, currentSpeed, currentMode, time)
@@ -354,23 +315,19 @@ jobs:
           class MainActivity : AppCompatActivity(), LocationListener {
               private lateinit var cockpitView: PhoneCockpitView
               private var locationManager: LocationManager? = null
-
               override fun onCreate(savedInstanceState: Bundle?) {
                   super.onCreate(savedInstanceState)
                   window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                   cockpitView = PhoneCockpitView(this)
                   setContentView(cockpitView)
-                  
                   cockpitView.setOnClickListener {
                       cockpitView.currentMode = (cockpitView.currentMode + 1) % 2
                   }
                   checkPermissions()
               }
-
               private fun checkPermissions() {
                   val perms = mutableListOf(Manifest.permission.ACCESS_FINE_LOCATION)
                   if (Build.VERSION.SDK_INT >= 33) perms.add(Manifest.permission.POST_NOTIFICATIONS)
-                  
                   val missing = perms.filter { ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED }
                   if (missing.isNotEmpty()) {
                       ActivityCompat.requestPermissions(this, missing.toTypedArray(), 99)
@@ -378,26 +335,22 @@ jobs:
                       startServices()
                   }
               }
-
               override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
                   super.onRequestPermissionsResult(requestCode, permissions, grantResults)
                   if (grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }) {
                       startServices()
                   }
               }
-
               private fun startServices() {
                   locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
                   try {
                       locationManager?.requestLocationUpdates(LocationManager.GPS_PROVIDER, 100, 0f, this)
                   } catch (e: SecurityException) { e.printStackTrace() }
-
                   try {
                       val intent = Intent(this, LionService::class.java)
                       if (Build.VERSION.SDK_INT >= 26) startForegroundService(intent) else startService(intent)
                   } catch (e: Exception) { e.printStackTrace() }
               }
-
               override fun onLocationChanged(location: Location) {
                   cockpitView.currentSpeed = location.speed * 3.6f
               }
@@ -407,9 +360,8 @@ jobs:
           }
           EOF
 
-          # 3. LionService.kt (1fps制限, メタデータ更新方式)
-          cat > app/src/main/java/jp/kazukun/peugeot/production/LionService.kt <<'EOF'
-          package jp.kazukun.peugeot.production
+          cat > app/src/main/java/jp/kazukun/peugeot/syntaxfix/LionService.kt <<'EOF'
+          package jp.kazukun.peugeot.syntaxfix
 
           import android.Manifest
           import android.app.NotificationChannel
@@ -423,13 +375,11 @@ jobs:
           import android.location.LocationManager
           import android.os.Build
           import android.os.Bundle
-          
           import androidx.media.MediaBrowserServiceCompat
           import android.support.v4.media.MediaBrowserCompat
           import android.support.v4.media.MediaMetadataCompat
           import android.support.v4.media.session.MediaSessionCompat
           import android.support.v4.media.session.PlaybackStateCompat
-          
           import androidx.core.app.NotificationCompat
           import androidx.core.content.ContextCompat
           import kotlinx.coroutines.*
@@ -438,14 +388,11 @@ jobs:
               private lateinit var mediaSession: MediaSessionCompat
               private var locationManager: LocationManager? = null
               private val renderScope = CoroutineScope(Dispatchers.Default + Job())
-              
               private val renderer = CockpitRenderer()
-              // 通信負荷対策: 320px
               private val WIDTH = 320
               private val HEIGHT = 320
               private val bitmap = Bitmap.createBitmap(WIDTH, HEIGHT, Bitmap.Config.ARGB_8888)
               private val canvas = Canvas(bitmap)
-              
               private var currentSpeed = 0f
               private var currentMode = 0
               private var time = 0.0
@@ -453,7 +400,6 @@ jobs:
               override fun onCreate() {
                   super.onCreate()
                   startForegroundNotification()
-
                   mediaSession = MediaSessionCompat(this, "PeugeotSession").apply {
                       setCallback(object : MediaSessionCompat.Callback() {
                           override fun onPlay() { currentMode = (currentMode+1)%2; forceUpdate() }
@@ -467,10 +413,7 @@ jobs:
                           .build())
                       sessionToken = mediaSession.sessionToken
                   }
-                  
                   setupLocation()
-                  
-                  // Auto用ループ: 1秒間隔 (1fps) で通信保護
                   renderScope.launch {
                       while (isActive) {
                           updateMetadata()
@@ -522,13 +465,11 @@ jobs:
               private fun updateMetadata() {
                   try {
                       renderer.draw(canvas, WIDTH, HEIGHT, currentSpeed, currentMode, time)
-                      
                       val meta = MediaMetadataCompat.Builder()
                           .putString(MediaMetadataCompat.METADATA_KEY_TITLE, "i-Cockpit")
                           .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, "${currentSpeed.toInt()} km/h")
                           .putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, bitmap)
                           .build()
-                      
                       mediaSession.setMetadata(meta)
                   } catch (e: Exception) {
                       e.printStackTrace()
@@ -538,10 +479,12 @@ jobs:
               override fun onLoadChildren(parentId: String, result: Result<MutableList<MediaBrowserCompat.MediaItem>>) {
                   result.sendResult(mutableListOf())
               }
-              override fun onGetRoot(...): MediaBrowserServiceCompat.BrowserRoot? {
-    return MediaBrowserServiceCompat.BrowserRoot("ROOT", null)
-}
+              
+              // ★修正済み：1行にまとめてYAMLエラー回避
+              override fun onGetRoot(clientPackageName: String, clientUid: Int, rootHints: Bundle?): MediaBrowserServiceCompat.BrowserRoot? {
+                  return MediaBrowserServiceCompat.BrowserRoot("ROOT", null)
               }
+              
               override fun onDestroy() {
                   renderScope.cancel()
                   locationManager?.removeUpdates(this)
@@ -558,11 +501,10 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          # 手動インストールしたGradleを使用
           gradle assembleDebug --no-daemon
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Peugeot-Production-APK
+          name: Peugeot-FixSyntax-APK
           path: app/build/outputs/apk/debug/app-debug.apk
